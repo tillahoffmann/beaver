@@ -2,6 +2,7 @@ import re
 from setuptools import find_packages, setup
 
 
+# Load the README and strip out Sphinx directives that PyPI cannot handle.
 with open("README.rst") as fp:
     long_description = fp.read()
 long_description = long_description.replace(".. doctest::", ".. code-block:: python")
@@ -11,7 +12,7 @@ long_description = re.sub(
     long_description, flags=re.MULTILINE
 )
 
-# Load the version number
+# Load the version number.
 try:
     with open('VERSION') as fp:
         version = fp.read().strip()
@@ -40,5 +41,10 @@ setup(
             "sphinx",
             "sphinx_rtd_theme",
         ]
-    }
+    },
+    entry_points={
+        "console_scripts": [
+            "beaver = beaver.cli:__main__",
+        ]
+    },
 )
