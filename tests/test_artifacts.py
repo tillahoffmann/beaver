@@ -33,3 +33,8 @@ def test_raise_if_missing_input_file():
     with pytest.raises(FileNotFoundError) as exinfo:
         asyncio.run(input())
     assert str(exinfo.value).startswith(f'{input} does not exist')
+
+
+def test_warn_if_whitespace(caplog: pytest.LogCaptureFixture):
+    ba.File("file with whitespace.txt")
+    assert caplog.text.strip().endswith("expect the unexpected")

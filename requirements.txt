@@ -155,10 +155,6 @@ jupyterlab-pygments==0.1.2
     # via nbconvert
 jupyterlab-widgets==1.0.2
     # via ipywidgets
-loguru==0.6.0
-    # via
-    #   -r test_requirements.txt
-    #   beaver-build
 markupsafe==2.1.0
     # via
     #   -r test_requirements.txt

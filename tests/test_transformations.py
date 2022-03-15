@@ -7,14 +7,14 @@ from unittest import mock
 
 
 def test_execution_time(tempdir):
-    bt.Sleep('input.txt', [], time=.1)
-    bt.Sleep('intermediate_0.txt', 'input.txt', time=.2)
-    [bt.Sleep(f"intermediate_1_{i}.txt", 'intermediate_0.txt',
+    bt.Sleep("input.txt", [], time=.1)
+    bt.Sleep("intermediate_0.txt", "input.txt", time=.2)
+    [bt.Sleep(f"intermediate_1_{i}.txt", "intermediate_0.txt",
               time=(i + 1) / 5) for i in range(3)]
     output0, = bt.Sleep(
-        'output_0.txt', [f"intermediate_1_{i}.txt" for i in range(3)], time=.5)
+        "output_0.txt", [f"intermediate_1_{i}.txt" for i in range(3)], time=.5)
     output1, = bt.Sleep(
-        'output_1.txt', ["intermediate_1_0.txt", "intermediate_0.txt"], time=.75)
+        "output_1.txt", ["intermediate_1_0.txt", "intermediate_0.txt"], time=.75)
     start = time.time()
     asyncio.run(ba.gather_artifacts(output0, output1))
     duration = time.time() - start
@@ -22,7 +22,7 @@ def test_execution_time(tempdir):
 
 
 def test_raise_if_multiple_parents():
-    artifact = ba.Artifact('dummy')
+    artifact = ba.Artifact("dummy")
     bt.Transformation(artifact, [])
     with pytest.raises(RuntimeError):
         bt.Transformation(artifact, [])
@@ -31,18 +31,13 @@ def test_raise_if_multiple_parents():
 def test_shell_command(tempdir):
     output, = bt.Shell("output.txt", None, "echo hello > output.txt".split())
     asyncio.run(output())
-    assert output.digest.hex() == '5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03'
+    assert output.digest.hex() == "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
 
 
 # See https://stackoverflow.com/a/59351425/1150961 for details.
 class AsyncMockResponse:
     def __init__(self, content: bytes):
-        self._content = content
-        self.num_reads = 0
-
-    async def read(self) -> bytes:
-        self.num_reads += 1
-        return self._content
+        self.read = mock.AsyncMock(return_value=content)
 
     async def __aenter__(self):
         return self
@@ -53,26 +48,26 @@ class AsyncMockResponse:
 
 def test_download(tempdir):
     mock_response = AsyncMockResponse(b"hello world")
-    with mock.patch('aiohttp.ClientSession.get', return_value=mock_response):
+    with mock.patch("aiohttp.ClientSession.get", return_value=mock_response):
         output, = bt.Download(
             "output.txt", "invalid-url",
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         )
         asyncio.run(output())
-        assert mock_response.num_reads == 1
+        mock_response.read.assert_called_once()
 
 
 def test_raise_if_download_wrong_file(tempdir):
     mock_response = AsyncMockResponse(b"bye world")
-    with mock.patch('aiohttp.ClientSession.get', return_value=mock_response):
+    with mock.patch("aiohttp.ClientSession.get", return_value=mock_response):
         output, = bt.Download(
             "output.txt", "invalid-url",
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         )
         with pytest.raises(ValueError) as exinfo:
             asyncio.run(output())
-        assert mock_response.num_reads == 1
         assert str(exinfo.value).startswith("expected digest")
+        mock_response.read.assert_called_once()
 
 
 def test_download_exists(tempdir):
@@ -92,7 +87,7 @@ def test_raise_if_missing_output_file(tempdir):
     output, = bt.Functional("output.txt", None, target)
     with pytest.raises(FileNotFoundError) as exinfo:
         asyncio.run(output())
-    assert str(exinfo.value).startswith(f'{output.parent} did not generate')
+    assert str(exinfo.value).startswith(f"{output.parent} did not generate")
 
 
 def test_raise_if_non_none_return():
@@ -116,7 +111,7 @@ def test_caching(tempdir):
 
     async def target(outputs, *args):
         for file in outputs:
-            with open(file.name, 'w') as fp:
+            with open(file.name, "w") as fp:
                 fp.write(file.name)
         calls.append(None)
 
@@ -137,11 +132,32 @@ def test_raise_if_shell_error():
         asyncio.run(output())
 
 
-@pytest.mark.parametrize('use_semaphore', [False, True])
+@pytest.mark.parametrize("use_semaphore", [False, True])
 def test_concurrency_with_semaphore(use_semaphore):
-    outputs = [output for i in range(9) for output in bt.Sleep(ba.Artifact(f'{i}'), None, time=.1)]
+    outputs = [output for i in range(9) for output in bt.Sleep(ba.Artifact(f"{i}"), None, time=.1)]
     start = time.time()
     asyncio.run(ba.gather_artifacts(*outputs, num_concurrent=3 if use_semaphore else None))
     actual_duration = time.time() - start
     expected_duration = .3 if use_semaphore else .1
     assert abs(actual_duration - expected_duration) < .1
+
+
+@pytest.mark.parametrize("cmd, expected", [
+    ("transform $< $@", "transform input1.txt output1.txt"),
+    ("transform $^ $@", "transform input1.txt input2.txt output1.txt"),
+    ("transform {inputs[1]} {outputs[0].name}", "transform input2.txt output1.txt")
+])
+def test_shell_substitution(cmd, expected, tempdir):
+    # Create dummy files.
+    for filename in ["input1.txt", "input2.txt", "output1.txt", "output2.txt"]:
+        with open(filename, "w") as fp:
+            fp.write(filename)
+
+    # Mock the execution of the subprocess.
+    create_subprocess_shell = mock.AsyncMock()
+    asyncio.run(create_subprocess_shell()).wait = mock.AsyncMock(return_value=0)
+    create_subprocess_shell.reset_mock()
+    with mock.patch("asyncio.subprocess.create_subprocess_shell", create_subprocess_shell):
+        transform = bt.Shell(["output1.txt", "output2.txt"], ["input1.txt", "input2.txt"], cmd)
+        asyncio.run(ba.gather_artifacts(*transform))
+        create_subprocess_shell.assert_called_once_with(expected)
