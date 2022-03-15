@@ -28,3 +28,10 @@ jobs:
           # Our tests may contain a number of stochastic elements. Setting a seed will make sure
           # they're not flaky (but also hide potential issues).
           SEED: "0"
+      - name: Publish package
+        if: >-
+          github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          user: __token__
+          password: ${{ secrets.pypi_password }}

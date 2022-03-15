@@ -1,6 +1,6 @@
-.PHONY : docs doctests lint sync tests
+.PHONY : docs doctests lint sdist sync tests
 
-build : lint tests docs doctests
+build : lint tests docs doctests sdist
 
 lint :
 	flake8
@@ -22,3 +22,10 @@ requirements.txt : requirements.in setup.py test_requirements.txt
 
 test_requirements.txt : test_requirements.in setup.py
 	pip-compile -v -o $@ $<
+
+VERSION :
+	python generate_version.py
+
+sdist : VERSION
+	python setup.py sdist
+	twine check dist/*.tar.gz
