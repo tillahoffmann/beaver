@@ -95,6 +95,10 @@ class Transformation:
         outputs = ', '.join(map(repr, self.outputs))
         return f"{self.__class__.__name__}([{inputs}] -> [{outputs}])"
 
+    def __await__(self):
+        # See https://stackoverflow.com/a/57078217/1150961 for details.
+        return (yield from self().__await__())
+
     COMPOSITE_DIGESTS = {}
     SEMAPHORE = None
 
