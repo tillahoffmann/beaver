@@ -1,6 +1,7 @@
 import asyncio
 from beaver import artifacts as ba
 from beaver import transformations as bt
+import os
 import pytest
 import time
 from unittest import mock
@@ -159,5 +160,24 @@ def test_shell_substitution(cmd, expected, tempdir):
     create_subprocess_shell.reset_mock()
     with mock.patch("asyncio.subprocess.create_subprocess_shell", create_subprocess_shell):
         transform = bt.Shell(["output1.txt", "output2.txt"], ["input1.txt", "input2.txt"], cmd)
-        asyncio.run(ba.gather_artifacts(*transform))
-        create_subprocess_shell.assert_called_once_with(expected)
+        asyncio.run(ba.gather_artifacts(transform))
+        create_subprocess_shell.assert_called_once()
+        assert create_subprocess_shell.call_args[0][0] == expected
+
+
+@pytest.mark.parametrize("ENV, env", [
+    ({}, {"BEAVER_TEST_VARIABLE": "FOO"}),
+    ({"BEAVER_TEST_VARIABLE": "FOO"}, {}),
+    ({"BEAVER_TEST_VARIABLE": "FOO"}, {"BEAVER_TEST_VARIABLE": "BAR"}),
+    ({"BEAVER_TEST_VARIABLE": "FOO"}, {"BEAVER_TEST_VARIABLE": None}),
+    ({}, {}),
+])
+def test_shell_environment_variables(ENV, env, tempdir):
+    bt.Shell.ENV = ENV
+    os.environ["BEAVER_TEST_VARIABLE"] = "BAZ"
+    output, = bt.Shell("output.txt", None, "echo $BEAVER_TEST_VARIABLE > $@", env=env)
+    asyncio.run(ba.gather_artifacts(output))
+    with open("output.txt") as fp:
+        actual = fp.read().strip() or None
+    expected = (os.environ | ENV | env)["BEAVER_TEST_VARIABLE"]
+    assert actual == expected

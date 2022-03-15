@@ -24,7 +24,7 @@ def test_file_glob(tempdir):
 
 def test_raise_if_duplicate_artifact():
     ba.Artifact("dummy")
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         ba.Artifact("dummy")
 
 
@@ -38,3 +38,8 @@ def test_raise_if_missing_input_file():
 def test_warn_if_whitespace(caplog: pytest.LogCaptureFixture):
     ba.File("file with whitespace.txt")
     assert caplog.text.strip().endswith("expect the unexpected")
+
+
+def test_raise_if_invalid_gather():
+    with pytest.raises(TypeError):
+        asyncio.run(ba.gather_artifacts(None))

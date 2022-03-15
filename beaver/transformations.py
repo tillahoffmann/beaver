@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import hashlib
 import logging
+import os
 import re
 import typing
 from . import artifacts
@@ -14,15 +15,14 @@ class Transformation:
     """
     Transformation that generates outputs given inputs.
 
-    .. note::
-
-       A transformation will be executed if any of its inputs or outputs have changed since the last
-       execution. Consequently, manual changes to generated artifacts will be overwritten. A missing
-       output is considered "changed" and will be generated if it is missing.
-
     Args:
         outputs: Artifacts to generate.
         inputs: Artifacts consumed by the transformation.
+
+    Attributes:
+        COMPOSITE_DIGESTS: Mapping of artifact names to composite digests. See
+            :func:`evaluate_composite_digests` for details.
+        SEMAPHORE: Semaphore to limit the number of concurrent transformations being executed.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
                  inputs: typing.Iterable["artifacts.Artifact"]) -> None:
@@ -38,7 +38,19 @@ class Transformation:
         for output in self.outputs:
             yield output
 
-    def evaluate_composite_digests(self) -> dict["artifacts.Artifact", bytes]:
+    def evaluate_composite_digests(self) -> dict[str, bytes]:
+        """
+        Evaluate composite digests for all :attr:`outputs` of the transformation.
+
+        A composite digest is defined as the digest of the digests of inputs and the digest of the
+        output, i.e. it is a joint, concise summary of both inputs and outputs. If any composite
+        digest differs from the digest in :attr:`COMPOSITE_DIGESTS` or is :code:`None`, the
+        transformation needs to be executed. A composite digest is :code:`None` if the corresponding
+        output digest is :code:`None` or any input digests are :code:`None`.
+
+        Returns:
+            digests: Mapping from output names to composite digests.
+        """
         # Initialise empty digests for the outputs.
         digests = {o.name: None for o in self.outputs}
 
@@ -79,7 +91,7 @@ class Transformation:
         # Update the composite digests.
         self.COMPOSITE_DIGESTS.update(self.evaluate_composite_digests())
 
-    async def _execute_with_semaphore(self):
+    async def _execute_with_semaphore(self) -> None:
         """
         Private wrapper to execute a transformation wrapped in a semaphore to limit concurrency.
         """
@@ -88,7 +100,7 @@ class Transformation:
                 return await self.execute()
         return await self.execute()
 
-    async def execute(self):
+    async def execute(self) -> None:
         """
         Execute the transformation.
         """
@@ -103,28 +115,32 @@ class Transformation:
         # See https://stackoverflow.com/a/57078217/1150961 for details.
         return (yield from self().__await__())
 
-    COMPOSITE_DIGESTS = {}
-    SEMAPHORE = None
+    COMPOSITE_DIGESTS: typing.Mapping[str, bytes] = {}
+    SEMAPHORE: typing.Optional[asyncio.Semaphore] = None
 
 
 class Sleep(Transformation):
     """
-    Sleeps for a given number of seconds and create any file artifact outputs.
+    Sleeps for a given number of seconds and create any file artifact outputs. Mostly used for
+    testing and debugging.
 
     Args:
+        outputs: Artifacts to generate.
+        inputs: Artifacts consumed by the transformation.
         time: Number of seconds to sleep for.
     """
-    def __init__(self, outputs, inputs, *, time):
+    def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
+                 inputs: typing.Iterable["artifacts.Artifact"], *, time: float) -> None:
         super().__init__(outputs, inputs)
         self.time = time
 
-    async def execute(self):
+    async def execute(self) -> None:
         LOGGER.info("running %s for %f seconds...", self, self.time)
         await asyncio.sleep(self.time)
         for output in self.outputs:
             if isinstance(output, artifacts.File):
-                with open(output.name, 'w'):
-                    pass
+                with open(output.name, 'w') as fp:
+                    fp.write(output.name)
                 LOGGER.info("created %s", output)
         LOGGER.info("completed %s", self)
 
@@ -144,7 +160,7 @@ class Download(Transformation):
         self.digest = bytes.fromhex(digest) if isinstance(digest, str) else digest
         self.url = url
 
-    async def execute(self):
+    async def execute(self) -> None:
         # Abort if we already have the right file.
         output, = self.outputs
         if output.digest == self.digest:
@@ -160,17 +176,47 @@ class Download(Transformation):
 
 
 class Shell(Transformation):
-    """
+    r"""
     Execute a shell command.
+
+    The transformation supports variable substitution using f-strings and Makefile syntax:
+
+    - :code:`$@` represents the first output.
+    - :code:`$<` represents the first input.
+    - :code:`$^` represents all inputs.
+    - :code:`$$@` represents the literal :code:`$@`, i.e. double dollars are properly escaped.
+    - :code:`{outputs[0].name}` represents the name of the first output. The available f-string
+      variables are :attr:`outputs` and :attr:`inputs`, each a list of :class:`Artifact`\ s.
+
+    Environment variables are inherited by default, but global environment variables for all
+    :class:`Shell` transformations can be specified in :attr:`ENV`, and specific environment
+    variables can be specified using the :attr:`env` argument. Environment variables that are not
+    "truthy" are removed from the environment of the transformation.
+
+    Args:
+        outputs: Artifacts to generate.
+        inputs: Artifacts consumed by the transformation.
+        cmd: Command to execute.
+        env: Mapping of environment variables.
+        **kwargs: Keyword arguments passed to :func:`asyncio.subprocess.create_subprocess_shell`.
+
+    Raises:
+        TypeError: If the :attr:`cmd` is neither a string nor a sequence of strings.
+
+    Attributes:
+        ENV: Default mapping of environment variables for all :class:`Shell` transformations.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
-                 inputs: typing.Iterable["artifacts.Artifact"], cmd, **kwargs) -> None:
+                 inputs: typing.Iterable["artifacts.Artifact"],
+                 cmd: typing.Union[str, typing.Iterable[str]], *, env: dict[str, str] = None,
+                 **kwargs) -> None:
         super().__init__(outputs, inputs)
         if isinstance(cmd, typing.Iterable) and not isinstance(cmd, str):
             cmd = " ".join(f"'{x}'" if " " in x else x for x in cmd)
         elif not isinstance(cmd, str):
             raise TypeError(cmd)
         self.cmd = cmd
+        self.env = env or {}
         self.kwargs = kwargs
 
     async def execute(self) -> None:
@@ -185,15 +231,26 @@ class Shell(Transformation):
         for key, value in rules.items():
             cmd = re.sub(r'(?<!\$)\$' + key, str(value), cmd)
         # Call the process.
-        process = await asyncio.subprocess.create_subprocess_shell(cmd, **self.kwargs)
+        env = os.environ | self.ENV | self.env
+        env = {key: value for key, value in env.items() if value}
+        process = await asyncio.subprocess.create_subprocess_shell(cmd, env=env, **self.kwargs)
         status = await process.wait()
         if status:
             raise RuntimeError(f"{self} failed with status code {status}")
+
+    ENV: typing.Mapping[str, str] = {}
 
 
 class Functional(Transformation):
     """
     Apply a python function.
+
+    Args:
+        outputs: Artifacts to generate.
+        inputs: Artifacts consumed by the transformation.
+        func: Function to execute.
+        *args: Positional arguments passed to :attr:`func`.
+        *kwargs: Keyword arguments passed to :attr:`func`.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"], inputs:
                  typing.Iterable["artifacts.Artifact"], func: typing.Callable, *args, **kwargs) \
@@ -203,5 +260,5 @@ class Functional(Transformation):
         self.args = args
         self.kwargs = kwargs
 
-    def execute(self):
+    def execute(self) -> None:
         return self.func(self.outputs, self.inputs, *self.args, **self.kwargs)
