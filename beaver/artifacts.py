@@ -1,9 +1,8 @@
-import asyncio
 import glob
 import hashlib
-from loguru import logger
 import os
 import typing
+from . import transformations
 
 
 class Artifact:
@@ -28,11 +27,11 @@ class Artifact:
         self.children = []
 
     @property
-    def parent(self) -> 'Transformation':
+    def parent(self) -> 'transformations.Transformation':
         return self._parent
 
     @parent.setter
-    def parent(self, value: 'Transformation') -> None:
+    def parent(self, value: 'transformations.Transformation') -> None:
         if self._parent is not None:
             raise RuntimeError(f"{self} is already associated with a transformation")
         self._parent = value
@@ -131,86 +130,3 @@ def normalize_artifacts(artifacts) -> typing.Iterable[Artifact]:
             raise TypeError(artifact)
         normalized.append(artifact)
     return normalized
-
-
-class Transformation:
-    """
-    Transformation that generates outputs given inputs.
-
-    .. note::
-
-       A transformation will be executed if any of its inputs or outputs have changed since the last
-       execution. Consequently, manual changes to generated artifacts will be overwritten. A missing
-       output is considered "changed" and will be generated if it is missing.
-
-    Args:
-        outputs: Artifacts to generate.
-        inputs: Artifacts consumed by the transformation.
-    """
-    def __init__(self, outputs: typing.Iterable[Artifact], inputs: typing.Iterable[Artifact]) \
-            -> None:
-        self.inputs = normalize_artifacts(inputs)
-        for input in self.inputs:
-            input.children.append(self)
-        self.outputs = normalize_artifacts(outputs)
-        for output in self.outputs:
-            output.parent = self
-        self.future = None
-
-    def __iter__(self):
-        for output in self.outputs:
-            yield output
-
-    def evaluate_composite_digests(self) -> dict[Artifact, bytes]:
-        # Initialise empty digests for the outputs.
-        digests = {o.name: None for o in self.outputs}
-
-        # Evaluate input digests and abort if any of them are missing.
-        input_hasher = hashlib.sha256()
-        for i in self.inputs:
-            if i.digest is None:
-                return digests
-            input_hasher.update(i.digest)
-
-        # Construct composite digests for the outputs.
-        for output in self.outputs:
-            if output.digest is None:
-                continue
-            hasher = input_hasher.copy()
-            hasher.update(output.digest)
-            digests[output.name] = hasher.hexdigest()
-        return digests
-
-    async def __call__(self) -> None:
-        # Wait for all inputs to have been generated.
-        await asyncio.gather(*(i() for i in self.inputs))
-
-        # Check if any composite indices have changed. If no, there's nothing further to be done.
-        composite_digests = self.evaluate_composite_digests()
-        if all(digest is not None and digest == self.COMPOSITE_DIGESTS.get(name) for name, digest
-               in composite_digests.items()):
-            logger.debug('no inputs or outputs of {} have changed', self)
-            return
-
-        # Create a future if required and wait for it to complete.
-        if not self.future:
-            self.future = asyncio.create_task(self.execute())
-        result = await self.future
-        if result is not None:
-            raise ValueError("transformations should return `None`")
-
-        # Update the composite digests.
-        self.COMPOSITE_DIGESTS.update(self.evaluate_composite_digests())
-
-    async def execute(self):
-        """
-        Execute the transformation.
-        """
-        raise NotImplementedError
-
-    def __repr__(self):
-        inputs = ', '.join(map(repr, self.inputs))
-        outputs = ', '.join(map(repr, self.outputs))
-        return f"{self.__class__.__name__}([{inputs}] -> [{outputs}])"
-
-    COMPOSITE_DIGESTS = {}
