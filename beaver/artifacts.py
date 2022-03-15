@@ -19,22 +19,30 @@ class Artifact:
     Args:
         name: Unique name of the artifact.
 
-    Attrs:
-        parent: Transformation that generates this artifact; :code:`None` if the artifact is a root
-            of the directed acyclic graph.
+    Raises:
+        ValueError: If the given :attr:`name` is already in use by another artifact.
+
+    Attributes:
         children: Transformations that consume this artifact; empty if the artifact is a leaf of the
             directed acyclic graph.
-        digest: Concise summary of the artifact.
+        REGISTRY: Mapping of artifact names to :class`Artifact` instances. The registry is used to
+            keep track of all artifacts and ensure artifact names are unique.
     """
     def __init__(self, name: str) -> None:
         if self.REGISTRY.setdefault(name, self) is not self:
-            raise RuntimeError(f"artifact with name `{name}` already exists")
+            raise ValueError(f"artifact with name `{name}` already exists")
         self.name = name
         self._parent = None
         self.children = []
 
+    children: typing.Iterable[transformations.Transformation]
+
     @property
     def parent(self) -> 'transformations.Transformation':
+        """
+        Transformation that generates this artifact; :code:`None` if the artifact is a root of the
+        directed acyclic graph.
+        """
         return self._parent
 
     @parent.setter
@@ -45,6 +53,10 @@ class Artifact:
 
     @property
     def digest(self) -> bytes:
+        """
+        Concise summary of the artifact; :code:`None` if the artifact does not exist, cannot be
+        summarized, or should always be generated using its :attr:`parent` transform.
+        """
         return None
 
     def __repr__(self):
@@ -59,7 +71,7 @@ class Artifact:
         # See https://stackoverflow.com/a/57078217/1150961 for details.
         return (yield from self().__await__())
 
-    REGISTRY = {}
+    REGISTRY: typing.Mapping[str, "Artifact"] = {}
 
 
 class File(Artifact):
@@ -101,7 +113,7 @@ class File(Artifact):
             return None
 
     @classmethod
-    def glob(self, pattern):
+    def glob(self, pattern: str) -> typing.Iterable["File"]:
         """
         Create a list of file artifacts based on a glob pattern.
 
@@ -109,7 +121,7 @@ class File(Artifact):
             pattern: Pattern passed to :func:`glob.glob`.
 
         Returns:
-            artifacts: List of file artifacts.
+            artifacts: File artifacts.
         """
         return normalize_artifacts([filename for filename in glob.glob(pattern)])
 
@@ -117,15 +129,20 @@ class File(Artifact):
         return shlex.quote(self.name)
 
 
-def normalize_artifacts(artifacts) -> typing.Iterable[Artifact]:
-    """
-    Normalize one or more artifacts. Strings are implicitly converted to :class:`FileArtifact`s.
+def normalize_artifacts(
+    artifacts: typing.Union[str, Artifact, typing.Iterable[typing.Union[str, Artifact]]]) \
+        -> typing.Iterable[Artifact]:
+    r"""
+    Normalize one or more artifacts. Strings are implicitly converted to :class:`FileArtifact`\ s.
 
     Args:
         artifacts: One or more artifacts.
 
     Returns:
         normalized: List of normalized artifacts.
+
+    Raises:
+        ValueError: If an artifact that is not a :class:`File` is referred to by name only.
     """
     if artifacts is None:
         return []
@@ -148,10 +165,30 @@ def normalize_artifacts(artifacts) -> typing.Iterable[Artifact]:
     return normalized
 
 
-async def gather_artifacts(*artifacts, num_concurrent: int = None):
+async def gather_artifacts(*artifacts_or_transformations, num_concurrent: int = None) \
+       -> typing.Coroutine:
     """
     Gather one or more artifacts and wrap them in a coroutine.
+
+    Args:
+        *artifacts_or_transformations: Artifacts to gather and/or transformations whose artifacts to
+            gather.
+        num_concurrent: Maximum number of concurrent transformations. Defaults to unrestricted.
+
+    Returns:
+        gathered: Coroutine that awaits all gathered artifacts.
     """
-    if num_concurrent is not None:
-        transformations.Transformation.SEMAPHORE = asyncio.Semaphore(num_concurrent)
-    await asyncio.gather(*(artifact for artifact in artifacts))
+    try:
+        if num_concurrent is not None:
+            transformations.Transformation.SEMAPHORE = asyncio.Semaphore(num_concurrent)
+        gathered = []
+        for item in artifacts_or_transformations:
+            if isinstance(item, Artifact):
+                gathered.append(item)
+            elif isinstance(item, transformations.Transformation):
+                gathered.extend(item)
+            else:
+                raise TypeError(item)
+        await asyncio.gather(*gathered)
+    finally:
+        transformations.Transformation.SEMAPHORE = None
