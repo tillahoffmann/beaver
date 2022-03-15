@@ -1,12 +1,10 @@
-master_doc = 'README'
+master_doc = "README"
 extensions = [
-    'matplotlib.sphinxext.plot_directive',
-    'sphinx.ext.doctest',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.autodoc',
+    "sphinx.ext.doctest",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.autodoc",
+    "sphinx_rtd_theme",
 ]
-project = 'TEMPLATE_NAME'
-napoleon_custom_sections = [('Returns', 'params_style')]
-plot_formats = [
-    ('png', 144),
-]
+project = "beaver"
+napoleon_custom_sections = [("Returns", "params_style")]
+html_theme = "sphinx_rtd_theme"
