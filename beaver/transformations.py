@@ -174,6 +174,9 @@ class Download(Transformation):
         # Download the file.
         async with aiohttp.ClientSession() as session:
             async with session.get(self.url) as response:
+                # Create the directory if necessary and save the output.
+                if dirname := os.path.dirname(output.name):
+                    os.makedirs(dirname, exist_ok=True)
                 with open(output.name, "wb") as fp:
                     fp.write(await response.read())
         if output.digest != self.digest:

@@ -51,7 +51,7 @@ def test_download(tempdir):
     mock_response = AsyncMockResponse(b"hello world")
     with mock.patch("aiohttp.ClientSession.get", return_value=mock_response):
         output, = bt.Download(
-            "output.txt", "invalid-url",
+            "directory/output.txt", "invalid-url",
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         )
         asyncio.run(output())
