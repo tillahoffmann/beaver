@@ -68,16 +68,15 @@ class File(Artifact):
     """
     def __init__(self, name: str) -> None:
         super().__init__(name)
-        self.filename = os.path.abspath(name)
-        if re.search(r"\s", self.filename):
+        if re.search(r"\s", self.name):
             LOGGER.warning("whitespace in `%s` is a recipe for disaster; expect the unexpected",
-                           self.filename)
+                           self.name)
         self._last_modified = None
         self._digest = None
 
     async def __call__(self):
         await super().__call__()
-        if not os.path.exists(self.filename):
+        if not os.path.exists(self.name):
             if self._parent:
                 message = f"{self._parent} did not generate {self}"
             else:
@@ -89,10 +88,10 @@ class File(Artifact):
         try:
             # Only re-evaluate the digest if the file has not been modified since we last computed
             # the hash.
-            last_modified = os.stat(self.filename).st_mtime
+            last_modified = os.stat(self.name).st_mtime
             if self._last_modified is None or self._last_modified < last_modified:
                 algorithm = hashlib.sha256()
-                with open(self.filename, 'rb') as fp:
+                with open(self.name, 'rb') as fp:
                     while (chunk := fp.read(4096)):
                         algorithm.update(chunk)
                 self._digest = algorithm.digest()
@@ -115,7 +114,7 @@ class File(Artifact):
         return normalize_artifacts([filename for filename in glob.glob(pattern)])
 
     def __str__(self):
-        return shlex.quote(self.filename)
+        return shlex.quote(self.name)
 
 
 def normalize_artifacts(artifacts) -> typing.Iterable[Artifact]:
