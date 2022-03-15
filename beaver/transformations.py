@@ -1,9 +1,13 @@
 import aiohttp
 import asyncio
 import hashlib
-from loguru import logger
+import logging
+import re
 import typing
 from . import artifacts
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Transformation:
@@ -62,7 +66,7 @@ class Transformation:
         composite_digests = self.evaluate_composite_digests()
         if all(digest is not None and digest == self.COMPOSITE_DIGESTS.get(name) for name, digest
                in composite_digests.items()):
-            logger.debug('no inputs or outputs of {} have changed', self)
+            LOGGER.debug('no inputs or outputs of %s have changed', self)
             return
 
         # Create a future if required and wait for it to complete.
@@ -115,14 +119,14 @@ class Sleep(Transformation):
         self.time = time
 
     async def execute(self):
-        logger.info("running %s for %f seconds...", self, self.time)
+        LOGGER.info("running %s for %f seconds...", self, self.time)
         await asyncio.sleep(self.time)
         for output in self.outputs:
             if isinstance(output, artifacts.File):
                 with open(output.name, 'w'):
                     pass
-                logger.info("created %s", output)
-        logger.info("completed %s", self)
+                LOGGER.info("created %s", output)
+        LOGGER.info("completed %s", self)
 
 
 class Download(Transformation):

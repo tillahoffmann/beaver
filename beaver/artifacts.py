@@ -1,9 +1,15 @@
 import asyncio
 import glob
 import hashlib
+import logging
 import os
+import re
+import shlex
 import typing
 from . import transformations
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Artifact:
@@ -63,6 +69,9 @@ class File(Artifact):
     def __init__(self, name: str) -> None:
         super().__init__(name)
         self.filename = os.path.abspath(name)
+        if re.search(r"\s", self.filename):
+            LOGGER.warning("whitespace in `%s` is a recipe for disaster; expect the unexpected",
+                           self.filename)
         self._last_modified = None
         self._digest = None
 
@@ -104,6 +113,9 @@ class File(Artifact):
             artifacts: List of file artifacts.
         """
         return normalize_artifacts([filename for filename in glob.glob(pattern)])
+
+    def __str__(self):
+        return shlex.quote(self.filename)
 
 
 def normalize_artifacts(artifacts) -> typing.Iterable[Artifact]:
