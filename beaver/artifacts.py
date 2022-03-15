@@ -87,6 +87,10 @@ class File(Artifact):
         self._digest = None
 
     async def __call__(self):
+        # Create the parent directory if necessary.
+        if dirname := os.path.dirname(self.name):
+            os.makedirs(dirname, exist_ok=True)
+        # Generate the artifact and verify the file exists.
         await super().__call__()
         if not os.path.exists(self.name):
             if self._parent:
