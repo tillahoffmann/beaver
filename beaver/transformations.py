@@ -174,7 +174,18 @@ class Shell(Transformation):
         self.kwargs = kwargs
 
     async def execute(self) -> None:
-        process = await asyncio.subprocess.create_subprocess_shell(self.cmd, **self.kwargs)
+        # Apply format-string substitution.
+        cmd = self.cmd.format(outputs=self.outputs, inputs=self.inputs)
+        # Apply Makefile-style substitutions.
+        rules = {
+            r"@": self.outputs[0],
+            r"<": self.inputs[0] if self.inputs else None,
+            r"\^": " ".join(input.name for input in self.inputs)
+        }
+        for key, value in rules.items():
+            cmd = re.sub(r'(?<!\$)\$' + key, str(value), cmd)
+        # Call the process.
+        process = await asyncio.subprocess.create_subprocess_shell(cmd, **self.kwargs)
         status = await process.wait()
         if status:
             raise RuntimeError(f"{self} failed with status code {status}")
