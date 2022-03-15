@@ -1,3 +1,4 @@
+import asyncio
 import glob
 import hashlib
 import os
@@ -130,3 +131,10 @@ def normalize_artifacts(artifacts) -> typing.Iterable[Artifact]:
             raise TypeError(artifact)
         normalized.append(artifact)
     return normalized
+
+
+async def gather_artifacts(*artifacts):
+    """
+    Gather one or more artifacts and wrap them in a coroutine.
+    """
+    await asyncio.gather(*(artifact() for artifact in artifacts))
