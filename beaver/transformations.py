@@ -67,13 +67,22 @@ class Transformation:
 
         # Create a future if required and wait for it to complete.
         if not self.future:
-            self.future = asyncio.create_task(self.execute())
+            self.future = asyncio.create_task(self._execute_with_semaphore())
         result = await self.future
         if result is not None:
             raise ValueError("transformations should return `None`")
 
         # Update the composite digests.
         self.COMPOSITE_DIGESTS.update(self.evaluate_composite_digests())
+
+    async def _execute_with_semaphore(self):
+        """
+        Private wrapper to execute a transformation wrapped in a semaphore to limit concurrency.
+        """
+        if self.SEMAPHORE is not None:
+            async with self.SEMAPHORE:
+                return await self.execute()
+        return await self.execute()
 
     async def execute(self):
         """
@@ -87,6 +96,7 @@ class Transformation:
         return f"{self.__class__.__name__}([{inputs}] -> [{outputs}])"
 
     COMPOSITE_DIGESTS = {}
+    SEMAPHORE = None
 
 
 class Sleep(Transformation):

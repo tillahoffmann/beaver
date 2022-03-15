@@ -7,6 +7,7 @@ import tempfile
 def clean_slate():
     beaver.Artifact.REGISTRY.clear()
     beaver.Transformation.COMPOSITE_DIGESTS.clear()
+    beaver.Transformation.SEMAPHORE = None
 
 
 @pytest.fixture

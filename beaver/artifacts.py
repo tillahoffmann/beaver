@@ -133,8 +133,10 @@ def normalize_artifacts(artifacts) -> typing.Iterable[Artifact]:
     return normalized
 
 
-async def gather_artifacts(*artifacts):
+async def gather_artifacts(*artifacts, num_concurrent: int = None):
     """
     Gather one or more artifacts and wrap them in a coroutine.
     """
+    if num_concurrent is not None:
+        transformations.Transformation.SEMAPHORE = asyncio.Semaphore(num_concurrent)
     await asyncio.gather(*(artifact() for artifact in artifacts))

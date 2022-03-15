@@ -135,3 +135,13 @@ def test_raise_if_shell_error():
     with pytest.raises(RuntimeError):
         output, = bt.Shell("output.txt", None, "not-a-command")
         asyncio.run(output())
+
+
+@pytest.mark.parametrize('use_semaphore', [False, True])
+def test_concurrency_with_semaphore(use_semaphore):
+    outputs = [output for i in range(9) for output in bt.Sleep(ba.Artifact(f'{i}'), None, time=.1)]
+    start = time.time()
+    asyncio.run(ba.gather_artifacts(*outputs, num_concurrent=3 if use_semaphore else None))
+    actual_duration = time.time() - start
+    expected_duration = .3 if use_semaphore else .1
+    assert abs(actual_duration - expected_duration) < .1
