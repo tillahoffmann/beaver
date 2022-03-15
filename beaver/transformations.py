@@ -71,34 +71,40 @@ class Transformation:
         return digests
 
     async def __call__(self) -> None:
-        # Wait for all inputs to have been generated.
-        await asyncio.gather(*(i() for i in self.inputs))
-
-        # Check if any composite indices have changed. If no, there's nothing further to be done.
-        composite_digests = self.evaluate_composite_digests()
-        if all(digest is not None and digest == self.COMPOSITE_DIGESTS.get(name) for name, digest
-               in composite_digests.items()):
-            LOGGER.debug('no inputs or outputs of %s have changed', self)
-            return
-
+        # Wait for all inputs artifacts.
+        await asyncio.gather(*self.inputs)
         # Create a future if required and wait for it to complete.
         if not self.future:
-            self.future = asyncio.create_task(self._execute_with_semaphore())
-        result = await self.future
-        if result is not None:
-            raise ValueError("transformations should return `None`")
+            self.future = asyncio.create_task(self._execute())
+        await self.future
+
+    async def _execute(self) -> None:
+        """
+        Private wrapper to determine whether the transformation needs to be executed and wrap it in
+        a semaphore to limit concurrency.
+        """
+        # Check if any composite indices have changed. If no, there's nothing further to be done.
+        composite_digests = self.evaluate_composite_digests()
+        stale_artifacts = [name for name, digest in composite_digests.items() if digest is None or
+                           digest != self.COMPOSITE_DIGESTS.get(name)]
+        if not stale_artifacts:
+            LOGGER.debug("composite digests %s are unchanged; %s will not be executed",
+                         composite_digests, self)
+            LOGGER.info("artifacts [%s] are up to date", ", ".join(o.name for o in self.outputs))
+            return
+
+        LOGGER.info("artifacts [%s] are stale; schedule transformation", ", ".join(stale_artifacts))
+
+        if self.SEMAPHORE is None:
+            await self.execute()
+        else:
+            async with self.SEMAPHORE:
+                await self.execute()
 
         # Update the composite digests.
-        self.COMPOSITE_DIGESTS.update(self.evaluate_composite_digests())
-
-    async def _execute_with_semaphore(self) -> None:
-        """
-        Private wrapper to execute a transformation wrapped in a semaphore to limit concurrency.
-        """
-        if self.SEMAPHORE is not None:
-            async with self.SEMAPHORE:
-                return await self.execute()
-        return await self.execute()
+        composite_digests = self.evaluate_composite_digests()
+        LOGGER.info("generated artifacts [%s]", ", ".join(o.name for o in self.outputs))
+        self.COMPOSITE_DIGESTS.update(composite_digests)
 
     async def execute(self) -> None:
         """
@@ -107,8 +113,8 @@ class Transformation:
         raise NotImplementedError
 
     def __repr__(self):
-        inputs = ', '.join(map(repr, self.inputs))
-        outputs = ', '.join(map(repr, self.outputs))
+        inputs = ", ".join(map(repr, self.inputs))
+        outputs = ", ".join(map(repr, self.outputs))
         return f"{self.__class__.__name__}([{inputs}] -> [{outputs}])"
 
     def __await__(self):
@@ -135,14 +141,14 @@ class Sleep(Transformation):
         self.time = time
 
     async def execute(self) -> None:
-        LOGGER.info("running %s for %f seconds...", self, self.time)
+        LOGGER.debug("running %s for %f seconds...", self, self.time)
         await asyncio.sleep(self.time)
         for output in self.outputs:
             if isinstance(output, artifacts.File):
-                with open(output.name, 'w') as fp:
+                with open(output.name, "w") as fp:
                     fp.write(output.name)
-                LOGGER.info("created %s", output)
-        LOGGER.info("completed %s", self)
+                LOGGER.debug("created %s", output)
+        LOGGER.debug("completed %s", self)
 
 
 class Download(Transformation):
@@ -168,7 +174,7 @@ class Download(Transformation):
         # Download the file.
         async with aiohttp.ClientSession() as session:
             async with session.get(self.url) as response:
-                with open(output.name, 'wb') as fp:
+                with open(output.name, "wb") as fp:
                     fp.write(await response.read())
         if output.digest != self.digest:
             raise ValueError(f"expected digest `{self.digest.hex()}` but got "
@@ -229,7 +235,7 @@ class Shell(Transformation):
             r"\^": " ".join(input.name for input in self.inputs)
         }
         for key, value in rules.items():
-            cmd = re.sub(r'(?<!\$)\$' + key, str(value), cmd)
+            cmd = re.sub(r"(?<!\$)\$" + key, str(value), cmd)
         # Call the process.
         env = os.environ | self.ENV | self.env
         env = {key: value for key, value in env.items() if value}

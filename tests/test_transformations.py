@@ -91,15 +91,6 @@ def test_raise_if_missing_output_file(tempdir):
     assert str(exinfo.value).startswith(f"{output.parent} did not generate")
 
 
-def test_raise_if_non_none_return():
-    async def target(*args):
-        return 1
-
-    output, = bt.Functional("output.txt", None, target)
-    with pytest.raises(ValueError):
-        asyncio.run(output())
-
-
 def test_input_none_digest():
     target = mock.AsyncMock(return_value=None)
     output, = bt.Functional(ba.Artifact("output"), ba.Artifact("input"), target)
