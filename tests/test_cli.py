@@ -3,6 +3,7 @@ import beaver.cli
 import logging
 import os
 import pytest
+import subprocess
 
 
 def test_cli(tempdir, caplog: pytest.LogCaptureFixture):
@@ -30,3 +31,7 @@ def test_cli(tempdir, caplog: pytest.LogCaptureFixture):
 
         assert "artifacts [input1.txt, input2.txt] are up to date" in caplog.text
         assert "artifacts [output.txt] are up to date" in caplog.text
+
+
+def test_entrypoint():
+    subprocess.check_call(["beaver", "-h"])
