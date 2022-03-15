@@ -30,7 +30,7 @@ def test_raise_if_multiple_parents():
 
 
 def test_shell_command(tempdir):
-    output, = bt.Shell("output.txt", None, "echo hello > output.txt".split())
+    output, = bt.Shell("directory/output.txt", None, "echo hello > $@".split())
     asyncio.run(output())
     assert output.digest.hex() == "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
 
