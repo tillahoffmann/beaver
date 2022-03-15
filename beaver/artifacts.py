@@ -47,7 +47,11 @@ class Artifact:
     async def __call__(self):
         if self.parent is None:
             return
-        return await self.parent()
+        return await self.parent
+
+    def __await__(self):
+        # See https://stackoverflow.com/a/57078217/1150961 for details.
+        return (yield from self().__await__())
 
     REGISTRY = {}
 
@@ -139,4 +143,4 @@ async def gather_artifacts(*artifacts, num_concurrent: int = None):
     """
     if num_concurrent is not None:
         transformations.Transformation.SEMAPHORE = asyncio.Semaphore(num_concurrent)
-    await asyncio.gather(*(artifact() for artifact in artifacts))
+    await asyncio.gather(*(artifact for artifact in artifacts))
