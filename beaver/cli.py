@@ -38,13 +38,14 @@ def __main__(args: typing.Iterable[str] = None):
     except FileNotFoundError:
         pass
 
-    # Get the targets we want to build and wait for them to complete.
-    artifacts = [ArtifactFactory.REGISTRY[name] for name in args.artifacts]
-    asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
-
-    # Save the updated composite digests.
-    with open(args.digest, "w") as fp:
-        json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
+    try:
+        # Get the targets we want to build and wait for them to complete.
+        artifacts = [ArtifactFactory.REGISTRY[name] for name in args.artifacts]
+        asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
+    finally:
+        # Save the updated composite digests.
+        with open(args.digest, "w") as fp:
+            json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
 
 
 if __name__ == "__main__":  # pragma: no cover
