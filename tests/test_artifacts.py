@@ -24,10 +24,10 @@ def test_file_glob(tempdir):
     assert len(artifacts) == 2
 
 
-def test_raise_if_duplicate_artifact():
+def test_raise_if_duplicate_name_with_different_type():
     ba.Artifact("dummy")
     with pytest.raises(ValueError):
-        ba.Artifact("dummy")
+        ba.File("dummy")
 
 
 def test_raise_if_missing_input_file():
