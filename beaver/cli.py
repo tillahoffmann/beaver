@@ -4,7 +4,7 @@ import importlib
 import json
 import logging
 import typing
-from .artifacts import Artifact, gather_artifacts
+from .artifacts import ArtifactFactory, gather_artifacts
 from .transformations import Transformation
 
 
@@ -27,24 +27,25 @@ def __main__(args: typing.Iterable[str] = None):
     spec = importlib.util.spec_from_file_location("config", args.file)
     config = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config)
-    LOGGER.debug("loaded %d artifacts from `%s`", len(Artifact.REGISTRY), args.file)
+    LOGGER.debug("loaded %d artifacts from `%s`", len(ArtifactFactory.REGISTRY), args.file)
 
     # Load the composite digests but only retain the composite digests of known artifacts.
     try:
         with open(args.digest) as fp:
             composite_digests = {name: digest for name, digest in json.load(fp).items()
-                                 if name in Artifact.REGISTRY}
+                                 if name in ArtifactFactory.REGISTRY}
             Transformation.COMPOSITE_DIGESTS = composite_digests
     except FileNotFoundError:
         pass
 
-    # Get the targets we want to build and wait for them to complete.
-    artifacts = [Artifact.REGISTRY[name] for name in args.artifacts]
-    asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
-
-    # Save the updated composite digests.
-    with open(args.digest, "w") as fp:
-        json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
+    try:
+        # Get the targets we want to build and wait for them to complete.
+        artifacts = [ArtifactFactory.REGISTRY[name] for name in args.artifacts]
+        asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
+    finally:
+        # Save the updated composite digests.
+        with open(args.digest, "w") as fp:
+            json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
 
 
 if __name__ == "__main__":  # pragma: no cover
