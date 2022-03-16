@@ -5,11 +5,7 @@ import tempfile
 
 @pytest.fixture(autouse=True)
 def clean_slate():
-    beaver.ArtifactFactory.REGISTRY.clear()
-    beaver.Transformation.COMPOSITE_DIGESTS.clear()
-    beaver.Transformation.SEMAPHORE = None
-    beaver.Shell.ENV.clear()
-    beaver.Group.STACK = []
+    beaver.reset()
 
 
 @pytest.fixture
