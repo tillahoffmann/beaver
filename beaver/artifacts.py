@@ -194,6 +194,11 @@ class File(Artifact):
         self._digest = None
 
     async def __call__(self):
+        # Omit directory creation and existence checks during dry run.
+        if transformations.Transformation.DRY_RUN:
+            await super().__call__()
+            return
+
         # Create the parent directory if necessary.
         if dirname := os.path.dirname(self.name):
             os.makedirs(dirname, exist_ok=True)
