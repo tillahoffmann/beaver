@@ -160,7 +160,7 @@ def normalize_artifacts(
     for artifact in artifacts:
         if isinstance(artifact, str):
             try:
-                candidate = Artifact.REGISTRY[artifact]
+                candidate = Artifact.REGISTRY[Group.evaluate_qualified_name(artifact)]
                 if isinstance(candidate, File):
                     artifact = candidate
                 else:
