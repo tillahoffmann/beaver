@@ -150,7 +150,7 @@ class Transformation:
         # See https://stackoverflow.com/a/57078217/1150961 for details.
         return (yield from self().__await__())
 
-    COMPOSITE_DIGESTS: typing.Mapping[str, bytes] = {}
+    COMPOSITE_DIGESTS: dict[str, bytes] = {}
     SEMAPHORE: typing.Optional[asyncio.Semaphore] = None
     DRY_RUN: bool = False
 
@@ -211,9 +211,9 @@ class Download(Transformation):
                              f"`{output.digest.hex()}` for {output}")
 
 
-class Shell(Transformation):
+class Subprocess(Transformation):
     r"""
-    Execute a shell command.
+    Execute a subprocess.
 
     The transformation supports variable substitution using f-strings and Makefile syntax:
 
@@ -226,19 +226,26 @@ class Shell(Transformation):
     - :code:`$!` represents the current python interpreter.
 
     Environment variables are inherited by default, but global environment variables for all
-    :class:`Shell` transformations can be specified in :attr:`ENV`, and specific environment
+    :class:`Subprocess` transformations can be specified in :attr:`ENV`, and specific environment
     variables can be specified using the :attr:`env` argument. Environment variables that are not
     "truthy" are removed from the environment of the transformation.
 
     Args:
         outputs: Artifacts to generate.
         inputs: Artifacts consumed by the transformation.
-        cmd: Command to execute.
+        cmd: Command to execute. Must be a single string if :attr:`shell` is truthy and a sequence
+            of strings otherwise.
         env: Mapping of environment variables.
-        **kwargs: Keyword arguments passed to :func:`asyncio.subprocess.create_subprocess_shell`.
+        shell: Execute the command through the shell, e.g. to expand the home directory :code:`~` or
+            pipe information between processes or files using :code:`|`, :code:`<`, or :code:`>`.
+            See :class:`subprocess.Popen` for details, including security considerations.
+        **kwargs: Keyword arguments passed to :func:`asyncio.subprocess.create_subprocess_shell` (if
+            :code:`shell == True`) or :func:`asyncio.subprocess.create_subprocess_exec` (if
+            :code:`shell == False`).
 
     Raises:
-        TypeError: If the :attr:`cmd` is neither a string nor a sequence of strings.
+        ValueError: If :attr:`shell == True` and :attr:`cmd` is not a string, or
+            :attr:`shell == False` and :attr:`cmd` is not a list of strings.
 
     Attributes:
         ENV: Default mapping of environment variables for all :class:`Shell` transformations.
@@ -246,20 +253,19 @@ class Shell(Transformation):
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
                  inputs: typing.Iterable["artifacts.Artifact"],
                  cmd: typing.Union[str, typing.Iterable[str]], *, env: dict[str, str] = None,
-                 **kwargs) -> None:
+                 shell: bool = False, **kwargs) -> None:
         super().__init__(outputs, inputs)
-        if isinstance(cmd, str):
-            self.cmd = cmd
-        elif isinstance(cmd, typing.Iterable):
-            self.cmd = " ".join(f"'{x}'" if " " in x else x for x in map(str, cmd))
-        else:
-            raise TypeError(cmd)
+        if shell and not isinstance(cmd, str):
+            raise ValueError(f"`cmd` must be a string if `shell == True` but got {cmd}")
+        if not shell and not isinstance(cmd, list):
+            raise ValueError(f"`cmd` must be a list of strings if `shell == False` but got {cmd}")
+        self.cmd = cmd
+        self.shell = shell
         self.env = env or {}
         self.kwargs = kwargs
 
-    async def execute(self) -> None:
-        # Apply format-string substitution.
-        cmd = self.cmd.format(outputs=self.outputs, inputs=self.inputs)
+    def _apply_substitutions(self, part: str) -> str:
+        part = part.format(outputs=self.outputs, inputs=self.inputs)
         # Apply Makefile-style and python interpreter substitutions.
         rules = {
             r"@": self.outputs[0],
@@ -268,17 +274,38 @@ class Shell(Transformation):
             r"!": sys.executable,
         }
         for key, value in rules.items():
-            cmd = re.sub(r"(?<!\$)\$" + key, str(value), cmd)
+            part = re.sub(r"(?<!\$)\$" + key, str(value), part)
+        return part
+
+    async def execute(self) -> None:
+        # Prepare the command.
+        if self.shell:
+            cmd = self._apply_substitutions(self.cmd)
+        else:
+            cmd = [self._apply_substitutions(part) for part in self.cmd]
+        LOGGER.info("\u2699 execute %s command `%s`", "shell" if self.shell else "subprocess", cmd)
         # Call the process.
         env = os.environ | self.ENV | self.env
         env = {key: str(value) for key, value in env.items() if value}
-        LOGGER.info("execute shell command `%s`", cmd)
-        process = await asyncio.subprocess.create_subprocess_shell(cmd, env=env, **self.kwargs)
+        if self.shell:
+            process = await asyncio.subprocess.create_subprocess_shell(cmd, env=env, **self.kwargs)
+        else:
+            process = await asyncio.subprocess.create_subprocess_exec(*cmd, env=env, **self.kwargs)
         status = await process.wait()
         if status:
             raise RuntimeError(f"{self} failed with status code {status}")
 
     ENV: dict[str, str] = {}
+
+
+class Shell(Subprocess):
+    """
+    Execute a command in the shell. See :class:`Subprocess` for details.
+    """
+    def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
+                 inputs: typing.Iterable["artifacts.Artifact"],
+                 cmd: str, *, env: dict[str, str] = None, **kwargs) -> None:
+        super().__init__(outputs, inputs, cmd, env=env, shell=True, **kwargs)
 
 
 class Functional(Transformation):
