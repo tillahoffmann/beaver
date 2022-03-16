@@ -23,18 +23,20 @@ def __main__(args: typing.Iterable[str] = None):
     parser.add_argument("artifacts", help="artifacts to generate", nargs="+")
     args = parser.parse_args(args)
 
-    # Load the composite digests.
-    try:
-        with open(args.digest) as fp:
-            Transformation.COMPOSITE_DIGESTS = json.load(fp)
-    except FileNotFoundError:
-        pass
-
     # Load the artifact and transformation configuration.
     spec = importlib.util.spec_from_file_location("config", args.file)
     config = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config)
     LOGGER.debug("loaded %d artifacts from `%s`", len(Artifact.REGISTRY), args.file)
+
+    # Load the composite digests but only retain the composite digests of known artifacts.
+    try:
+        with open(args.digest) as fp:
+            composite_digests = {name: digest for name, digest in json.load(fp).items()
+                                 if name in Artifact.REGISTRY}
+            Transformation.COMPOSITE_DIGESTS = composite_digests
+    except FileNotFoundError:
+        pass
 
     # Get the targets we want to build and wait for them to complete.
     artifacts = [Artifact.REGISTRY[name] for name in args.artifacts]
