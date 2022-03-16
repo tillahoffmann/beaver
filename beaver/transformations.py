@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import re
+import sys
 import typing
 from . import artifacts
 
@@ -193,6 +194,7 @@ class Shell(Transformation):
     - :code:`$$@` represents the literal :code:`$@`, i.e. double dollars are properly escaped.
     - :code:`{outputs[0].name}` represents the name of the first output. The available f-string
       variables are :attr:`outputs` and :attr:`inputs`, each a list of :class:`Artifact`\ s.
+    - :code:`$!` represents the current python interpreter.
 
     Environment variables are inherited by default, but global environment variables for all
     :class:`Shell` transformations can be specified in :attr:`ENV`, and specific environment
@@ -229,11 +231,12 @@ class Shell(Transformation):
     async def execute(self) -> None:
         # Apply format-string substitution.
         cmd = self.cmd.format(outputs=self.outputs, inputs=self.inputs)
-        # Apply Makefile-style substitutions.
+        # Apply Makefile-style and python interpreter substitutions.
         rules = {
             r"@": self.outputs[0],
             r"<": self.inputs[0] if self.inputs else None,
-            r"\^": " ".join(input.name for input in self.inputs)
+            r"\^": " ".join(input.name for input in self.inputs),
+            r"!": sys.executable,
         }
         for key, value in rules.items():
             cmd = re.sub(r"(?<!\$)\$" + key, str(value), cmd)
