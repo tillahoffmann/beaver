@@ -105,25 +105,35 @@ class Transformation:
         if not stale_artifacts:
             LOGGER.debug("composite digests %s are unchanged; %s will not be executed",
                          composite_digests, self)
-            LOGGER.info("artifacts [%s] are up to date", ", ".join(o.name for o in self.outputs))
+            LOGGER.info("\U0001f7e2 artifacts [%s] are up to date",
+                        ", ".join(o.name for o in self.outputs))
             return
+        LOGGER.debug("composite digests of %s have changed: %s", ", ".join(stale_artifacts),
+                     composite_digests)
 
         if self.DRY_RUN:
-            LOGGER.info("artifacts [%s] are stale; transformation not scheduled because of dry run",
-                        ", ".join(stale_artifacts))
+            LOGGER.info("\U0001f7e1 artifacts [%s] are stale; transformation not scheduled because "
+                        "of dry run", ", ".join(stale_artifacts))
             return
 
-        LOGGER.info("artifacts [%s] are stale; schedule transformation", ", ".join(stale_artifacts))
-        if self.SEMAPHORE is None:
-            await self.execute()
-        else:
-            async with self.SEMAPHORE:
-                await self.execute()
+        LOGGER.info("\U0001f7e1 artifacts [%s] are stale; schedule transformation",
+                    ", ".join(stale_artifacts))
 
-        # Update the composite digests.
-        composite_digests = self.evaluate_composite_digests()
-        LOGGER.info("generated artifacts [%s]", ", ".join(o.name for o in self.outputs))
-        self.COMPOSITE_DIGESTS.update(composite_digests)
+        try:
+            if self.SEMAPHORE is None:
+                await self.execute()
+            else:
+                async with self.SEMAPHORE:
+                    await self.execute()
+
+            # Update the composite digests.
+            composite_digests = self.evaluate_composite_digests()
+            LOGGER.info("\u2705 generated artifacts [%s]", ", ".join(o.name for o in self.outputs))
+            self.COMPOSITE_DIGESTS.update(composite_digests)
+        except Exception as ex:
+            LOGGER.error("\u274c failed to generate artifacts [%s]: %s",
+                         ", ".join(o.name for o in self.outputs), ex)
+            raise
 
     async def execute(self) -> None:
         """
