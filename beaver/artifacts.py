@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import glob
 import hashlib
 import logging
@@ -29,8 +30,11 @@ class Artifact:
             keep track of all artifacts and ensure artifact names are unique.
     """
     def __init__(self, name: str) -> None:
+        name = Group.evaluate_qualified_name(name)
         if self.REGISTRY.setdefault(name, self) is not self:
             raise ValueError(f"artifact with name `{name}` already exists")
+        if Group.STACK:
+            Group.STACK[-1].members.append(self)
         self.name = name
         self._parent = None
         self.children = []
@@ -163,6 +167,9 @@ def normalize_artifacts(
                     raise ValueError("only file artifacts can be implicitly referenced by name")
             except KeyError:
                 artifact = File(artifact)
+        elif isinstance(artifact, transformations.Transformation):
+            normalized.extend(artifact.outputs)
+            continue
         elif not isinstance(artifact, Artifact):
             raise TypeError(artifact)
         normalized.append(artifact)
@@ -196,3 +203,75 @@ async def gather_artifacts(*artifacts_or_transformations, num_concurrent: int = 
         await asyncio.gather(*gathered)
     finally:
         transformations.Transformation.SEMAPHORE = None
+
+
+class Group(Artifact):
+    """
+    Artifact representing a group of other artifacts.
+
+    Args:
+        name: Name of the group. The group name is added as a prefix for all artifacts created
+            within the context manager of the group.
+
+    Attributes:
+        members: Members of the group.
+    """
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.members = []
+
+    def __enter__(self) -> "Group":
+        if self in self.STACK:  # pragma: no cover
+            raise RuntimeError(f"{self} is already in the stack")
+        self.STACK.append(self)
+        return self
+
+    def __exit__(self, *args):
+        if (other := self.STACK.pop()) is not self:  # pragma: no cover
+            raise RuntimeError(f"expected the last element to be {self} but got {other}")
+
+    async def __call__(self):
+        await asyncio.gather(*self.members)
+
+    STACK: list["Group"] = []
+
+    @classmethod
+    def evaluate_qualified_name(cls, name: str) -> str:
+        """
+        Evaluate the fully qualified name of an artifact given its context.
+
+        Args:
+            name: Unqualified name.
+
+        Returns:
+            name: Qualified name.
+        """
+        if not cls.STACK:
+            return name
+        return os.path.join(cls.STACK[-1].name, name)
+
+
+@contextlib.contextmanager
+def group_artifacts(*names: str, squeeze=True) -> list[Group]:
+    """
+    Group artifacts in a context.
+
+    Args:
+        names: Name of nested groups.
+        squeeze: Whether to return a single element if there is only one group.
+
+    Returns:
+        groups: Artifacts representing the nested groups.
+    """
+    try:
+        groups = []
+        for name in names:
+            group = Artifact.REGISTRY.get(Group.evaluate_qualified_name(name), None)
+            if group is None:
+                group = Group(name)
+            elif not isinstance(group, Group):
+                raise ValueError(f"{group} is not a group")
+            groups.append(group.__enter__())
+        yield groups[0] if len(groups) == 1 and squeeze else groups
+    finally:
+        [group.__exit__() for group in reversed(groups)]

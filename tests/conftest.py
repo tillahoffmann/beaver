@@ -9,6 +9,7 @@ def clean_slate():
     beaver.Transformation.COMPOSITE_DIGESTS.clear()
     beaver.Transformation.SEMAPHORE = None
     beaver.Shell.ENV.clear()
+    beaver.Group.STACK = []
 
 
 @pytest.fixture

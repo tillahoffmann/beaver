@@ -18,6 +18,8 @@ def __main__(args: typing.Iterable[str] = None):
                         default=".beaverdigests")
     parser.add_argument("--file", "-f", help="file containing artifact and transform definitions",
                         default="dam.py")
+    parser.add_argument("--num_concurrent", "-c", help="number of concurrent transformations",
+                        type=int, default=1)
     parser.add_argument("artifacts", help="artifacts to generate", nargs="+")
     args = parser.parse_args(args)
 
@@ -36,7 +38,7 @@ def __main__(args: typing.Iterable[str] = None):
 
     # Get the targets we want to build and wait for them to complete.
     artifacts = [Artifact.REGISTRY[name] for name in args.artifacts]
-    asyncio.run(gather_artifacts(*artifacts))
+    asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
 
     # Save the updated composite digests.
     with open(args.digest, "w") as fp:
