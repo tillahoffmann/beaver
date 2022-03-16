@@ -184,3 +184,14 @@ def test_dry_run(dry_run):
     else:
         with pytest.raises(NotImplementedError):
             asyncio.run(ba.gather_artifacts(transformation))
+
+
+def test_cancel_long_running_transformation():
+    async def target():
+        transformation = bt.Shell(ba.Artifact("long-running"), None,
+                                  "for x in `seq 60`; do sleep 1 && echo $x; done")
+        task = asyncio.create_task(ba.gather_artifacts(transformation))
+        bt.cancel_all_transformations()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    asyncio.run(target())

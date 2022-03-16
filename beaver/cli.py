@@ -5,7 +5,7 @@ import json
 import logging
 import typing
 from .artifacts import ArtifactFactory, gather_artifacts
-from .transformations import Transformation
+from .transformations import cancel_all_transformations, Transformation
 
 
 LOGGER = logging.getLogger("beaver")
@@ -50,6 +50,7 @@ def __main__(args: typing.Iterable[str] = None):
         # Save the updated composite digests.
         with open(args.digest, "w") as fp:
             json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
+        cancel_all_transformations()
 
 
 if __name__ == "__main__":  # pragma: no cover

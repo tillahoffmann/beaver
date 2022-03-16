@@ -12,6 +12,19 @@ from . import artifacts
 LOGGER = logging.getLogger(__name__)
 
 
+def cancel_all_transformations() -> None:
+    """
+    Cancel all running transformations.
+    """
+    try:
+        tasks = asyncio.all_tasks()
+    except RuntimeError:
+        return
+
+    for task in tasks:
+        task.cancel()
+
+
 class Transformation:
     """
     Transformation that generates outputs given inputs.
