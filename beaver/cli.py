@@ -20,8 +20,12 @@ def __main__(args: typing.Iterable[str] = None):
                         default="dam.py")
     parser.add_argument("--num_concurrent", "-c", help="number of concurrent transformations",
                         type=int, default=1)
+    parser.add_argument("--dry-run", "-n", help="print transformations without executing them",
+                        action="store_true")
     parser.add_argument("artifacts", help="artifacts to generate", nargs="+")
     args = parser.parse_args(args)
+
+    Transformation.DRY_RUN = args.dry_run
 
     # Load the artifact and transformation configuration.
     spec = importlib.util.spec_from_file_location("config", args.file)

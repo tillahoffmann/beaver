@@ -172,3 +172,15 @@ def test_shell_environment_variables(ENV, env, tempdir):
         actual = fp.read().strip() or None
     expected = (os.environ | ENV | env)["BEAVER_TEST_VARIABLE"]
     assert actual == expected
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_dry_run(dry_run):
+    transformation = bt.Transformation("dummy.txt", None)
+    bt.Transformation.DRY_RUN = dry_run
+
+    if dry_run:
+        asyncio.run(ba.gather_artifacts(transformation))
+    else:
+        with pytest.raises(NotImplementedError):
+            asyncio.run(ba.gather_artifacts(transformation))

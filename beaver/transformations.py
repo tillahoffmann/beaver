@@ -24,6 +24,7 @@ class Transformation:
         COMPOSITE_DIGESTS: Mapping of artifact names to composite digests. See
             :func:`evaluate_composite_digests` for details.
         SEMAPHORE: Semaphore to limit the number of concurrent transformations being executed.
+        DRY_RUN: Whether to show transformations without executing them.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
                  inputs: typing.Iterable["artifacts.Artifact"]) -> None:
@@ -94,8 +95,12 @@ class Transformation:
             LOGGER.info("artifacts [%s] are up to date", ", ".join(o.name for o in self.outputs))
             return
 
-        LOGGER.info("artifacts [%s] are stale; schedule transformation", ", ".join(stale_artifacts))
+        if self.DRY_RUN:
+            LOGGER.info("artifacts [%s] are stale; transformation not scheduled because of dry run",
+                        ", ".join(stale_artifacts))
+            return
 
+        LOGGER.info("artifacts [%s] are stale; schedule transformation", ", ".join(stale_artifacts))
         if self.SEMAPHORE is None:
             await self.execute()
         else:
@@ -124,6 +129,7 @@ class Transformation:
 
     COMPOSITE_DIGESTS: typing.Mapping[str, bytes] = {}
     SEMAPHORE: typing.Optional[asyncio.Semaphore] = None
+    DRY_RUN: bool = False
 
 
 class Sleep(Transformation):
@@ -249,7 +255,7 @@ class Shell(Transformation):
         if status:
             raise RuntimeError(f"{self} failed with status code {status}")
 
-    ENV: typing.Mapping[str, str] = {}
+    ENV: dict[str, str] = {}
 
 
 class Functional(Transformation):
