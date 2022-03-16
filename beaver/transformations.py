@@ -240,6 +240,7 @@ class Shell(Transformation):
         # Call the process.
         env = os.environ | self.ENV | self.env
         env = {key: str(value) for key, value in env.items() if value}
+        LOGGER.info("execute shell command `%s`", cmd)
         process = await asyncio.subprocess.create_subprocess_shell(cmd, env=env, **self.kwargs)
         status = await process.wait()
         if status:
