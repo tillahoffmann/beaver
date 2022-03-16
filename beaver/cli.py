@@ -12,6 +12,7 @@ LOGGER = logging.getLogger("beaver")
 
 
 def __main__(args: typing.Iterable[str] = None):
+    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--digest", "-d", help="file containing composite artifact digests",
                         default=".beaverdigests")

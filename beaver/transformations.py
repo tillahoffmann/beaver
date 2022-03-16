@@ -217,11 +217,12 @@ class Shell(Transformation):
                  cmd: typing.Union[str, typing.Iterable[str]], *, env: dict[str, str] = None,
                  **kwargs) -> None:
         super().__init__(outputs, inputs)
-        if isinstance(cmd, typing.Iterable) and not isinstance(cmd, str):
-            cmd = " ".join(f"'{x}'" if " " in x else x for x in cmd)
-        elif not isinstance(cmd, str):
+        if isinstance(cmd, str):
+            self.cmd = cmd
+        elif isinstance(cmd, typing.Iterable):
+            self.cmd = " ".join(f"'{x}'" if " " in x else x for x in map(str, cmd))
+        else:
             raise TypeError(cmd)
-        self.cmd = cmd
         self.env = env or {}
         self.kwargs = kwargs
 
@@ -238,7 +239,7 @@ class Shell(Transformation):
             cmd = re.sub(r"(?<!\$)\$" + key, str(value), cmd)
         # Call the process.
         env = os.environ | self.ENV | self.env
-        env = {key: value for key, value in env.items() if value}
+        env = {key: str(value) for key, value in env.items() if value}
         process = await asyncio.subprocess.create_subprocess_shell(cmd, env=env, **self.kwargs)
         status = await process.wait()
         if status:
