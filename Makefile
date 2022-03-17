@@ -9,7 +9,7 @@ tests :
 	pytest -v --cov=beaver_build --cov-fail-under=100 --cov-report=term-missing --cov-report=html
 
 docs :
-	sphinx-build . docs/_build
+	sphinx-build . docs/_build -n
 
 doctests :
 	sphinx-build -b doctest . docs/_build

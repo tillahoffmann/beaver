@@ -5,8 +5,17 @@ from setuptools import find_packages, setup
 # Load the README and strip out Sphinx directives that PyPI cannot handle.
 with open("README.rst") as fp:
     long_description = fp.read()
-long_description = long_description.replace(".. doctest::", ".. code-block:: python")
-long_description = re.sub(r":((math)|(func)|(class)):", ":code:", long_description)
+replacements = [
+    (".. doctest::", ".. code-block:: python"),
+    (".. testcode::", ".. code-block:: python"),
+    (":math:", ":code:"),
+    (":func:", ":code:"),
+    (":class:", ":code:"),
+    (":meth:", ":code:"),
+    (":mod:", ":code:"),
+]
+for old, new in replacements:
+    long_description = long_description.replace(old, new)
 long_description = re.sub(
     r"((\.\. automodule:: .*?$)|(\.\. toctree::)|(\.\. plot:: .*?$))", r".. code-block::\n\n  \1",
     long_description, flags=re.MULTILINE
@@ -44,7 +53,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "beaver = beaver.cli:__main__",
+            "beaver = beaver_build.cli:__main__",
         ]
     },
 )
