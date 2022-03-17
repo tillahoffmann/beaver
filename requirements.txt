@@ -131,7 +131,7 @@ ipython-genutils==0.2.0
     #   ipywidgets
     #   notebook
     #   qtconsole
-ipywidgets==7.6.5
+ipywidgets==7.7.0
     # via jupyter
 jedi==0.18.1
     # via ipython
@@ -163,13 +163,13 @@ jupyter-core==4.9.2
     #   qtconsole
 jupyterlab-pygments==0.1.2
     # via nbconvert
-jupyterlab-widgets==1.0.2
+jupyterlab-widgets==1.1.0
     # via ipywidgets
 keyring==23.5.0
     # via
     #   -r test_requirements.txt
     #   twine
-markupsafe==2.1.0
+markupsafe==2.1.1
     # via
     #   -r test_requirements.txt
     #   jinja2
@@ -206,7 +206,7 @@ nest-asyncio==1.5.4
     #   jupyter-client
     #   nbclient
     #   notebook
-notebook==6.4.9
+notebook==6.4.10
     # via
     #   jupyter
     #   widgetsnbextension
@@ -397,7 +397,7 @@ traitlets==5.1.1
     #   qtconsole
 twine==3.8.0
     # via -r test_requirements.txt
-urllib3==1.26.8
+urllib3==1.26.9
     # via
     #   -r test_requirements.txt
     #   requests
@@ -408,7 +408,7 @@ webencodings==0.5.1
     # via
     #   -r test_requirements.txt
     #   bleach
-widgetsnbextension==3.5.2
+widgetsnbextension==3.6.0
     # via ipywidgets
 yarl==1.7.2
     # via

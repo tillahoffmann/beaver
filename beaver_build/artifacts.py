@@ -18,10 +18,11 @@ class ArtifactFactory(type):
     Metaclass that creates :class:`Artifact` instances or returns existing instances.
 
     Attributes:
-        REGISTRY: Mapping of artifact names to :class`Artifact` instances. The registry is used to
+        REGISTRY: Mapping of artifact names to :class:`Artifact` instances. The registry is used to
             keep track of all artifacts and ensure artifact names are unique.
     """
-    REGISTRY: dict[str, "Artifact"] = {}
+    # Declare using an old-school type hint because Sphinx struggles with circular references.
+    REGISTRY = {}  # type: dict[str, Artifact]
 
     def __init__(self, name, bases, members):
         super(ArtifactFactory, self).__init__(name, bases, members)
@@ -51,11 +52,15 @@ class Artifact(metaclass=ArtifactFactory):
         name: Unique name of the artifact.
 
     Raises:
-        ValueError: If the given :attr:`name` is already in use by another artifact.
+        ValueError: If the given :code:`name` is already in use by another artifact.
 
     Attributes:
         children: Transformations that consume this artifact; empty if the artifact is a leaf of the
             directed acyclic graph.
+        parent: Transformation that generates this artifact; :code:`None` if the artifact is a root
+            of the directed acyclic graph.
+        digest: Concise summary of the artifact; :code:`None` if the artifact does not exist, cannot
+            be summarized, or should always be generated using its :attr:`parent` transform.
     """
     def __init__(self, name: str) -> None:
         self.name = name
@@ -66,10 +71,6 @@ class Artifact(metaclass=ArtifactFactory):
 
     @property
     def parent(self) -> 'transformations.Transformation':
-        """
-        Transformation that generates this artifact; :code:`None` if the artifact is a root of the
-        directed acyclic graph.
-        """
         return self._parent
 
     @parent.setter
@@ -80,10 +81,6 @@ class Artifact(metaclass=ArtifactFactory):
 
     @property
     def digest(self) -> bytes:
-        """
-        Concise summary of the artifact; :code:`None` if the artifact does not exist, cannot be
-        summarized, or should always be generated using its :attr:`parent` transform.
-        """
         return None
 
     def __repr__(self):

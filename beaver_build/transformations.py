@@ -55,7 +55,7 @@ class Transformation:
 
     def evaluate_composite_digests(self) -> dict[str, bytes]:
         """
-        Evaluate composite digests for all :attr:`outputs` of the transformation.
+        Evaluate composite digests for all :code:`outputs` of the transformation.
 
         A composite digest is defined as the digest of the digests of inputs and the digest of the
         output, i.e. it is a joint, concise summary of both inputs and outputs. If any composite
@@ -222,33 +222,34 @@ class Subprocess(Transformation):
     - :code:`$^` represents all inputs.
     - :code:`$$@` represents the literal :code:`$@`, i.e. double dollars are properly escaped.
     - :code:`{outputs[0].name}` represents the name of the first output. The available f-string
-      variables are :attr:`outputs` and :attr:`inputs`, each a list of :class:`Artifact`\ s.
+      variables are :code:`outputs` and :code:`inputs`, each a list of
+      :class:`Artifact <.artifacts.Artifact>`\ s.
     - :code:`$!` represents the current python interpreter.
 
     Environment variables are inherited by default, but global environment variables for all
     :class:`Subprocess` transformations can be specified in :attr:`ENV`, and specific environment
-    variables can be specified using the :attr:`env` argument. Environment variables that are not
+    variables can be specified using the :code:`env` argument. Environment variables that are not
     "truthy" are removed from the environment of the transformation.
 
     Args:
         outputs: Artifacts to generate.
         inputs: Artifacts consumed by the transformation.
-        cmd: Command to execute. Must be a single string if :attr:`shell` is truthy and a sequence
+        cmd: Command to execute. Must be a single string if :code:`shell` is truthy and a sequence
             of strings otherwise.
         env: Mapping of environment variables.
-        shell: Execute the command through the shell, e.g. to expand the home directory :code:`~` or
-            pipe information between processes or files using :code:`|`, :code:`<`, or :code:`>`.
-            See :class:`subprocess.Popen` for details, including security considerations.
+        shell: Whether to execute the command through the shell, e.g. to expand the home directory
+            :code:`~` or pipe information between processes or files using :code:`|`, :code:`<`, or
+            :code:`>`. See :class:`subprocess.Popen` for details, including security considerations.
         **kwargs: Keyword arguments passed to :func:`asyncio.subprocess.create_subprocess_shell` (if
             :code:`shell == True`) or :func:`asyncio.subprocess.create_subprocess_exec` (if
             :code:`shell == False`).
 
     Raises:
-        ValueError: If :attr:`shell == True` and :attr:`cmd` is not a string, or
-            :attr:`shell == False` and :attr:`cmd` is not a list of strings.
+        ValueError: If :code:`shell == True` and :code:`cmd` is not a string, or
+            :code:`shell == False` and :code:`cmd` is not a list of strings.
 
     Attributes:
-        ENV: Default mapping of environment variables for all :class:`Shell` transformations.
+        ENV: Default mapping of environment variables for all :class:`Subprocess` transformations.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
                  inputs: typing.Iterable["artifacts.Artifact"],
@@ -282,8 +283,9 @@ class Subprocess(Transformation):
         if self.shell:
             cmd = self._apply_substitutions(self.cmd)
         else:
-            cmd = [self._apply_substitutions(part) for part in self.cmd]
-        LOGGER.info("\u2699 execute %s command `%s`", "shell" if self.shell else "subprocess", cmd)
+            cmd = [self._apply_substitutions(str(part)) for part in self.cmd]
+        LOGGER.info("\u2699\ufe0f execute %s command `%s`", "shell" if self.shell else "subprocess",
+                    cmd)
         # Call the process.
         env = os.environ | self.ENV | self.env
         env = {key: str(value) for key, value in env.items() if value}
@@ -316,8 +318,8 @@ class Functional(Transformation):
         outputs: Artifacts to generate.
         inputs: Artifacts consumed by the transformation.
         func: Function to execute.
-        *args: Positional arguments passed to :attr:`func`.
-        *kwargs: Keyword arguments passed to :attr:`func`.
+        *args: Positional arguments passed to :code:`func`.
+        *kwargs: Keyword arguments passed to :code:`func`.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"], inputs:
                  typing.Iterable["artifacts.Artifact"], func: typing.Callable, *args, **kwargs) \
