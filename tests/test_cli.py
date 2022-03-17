@@ -33,5 +33,10 @@ def test_cli(tempdir, caplog: pytest.LogCaptureFixture):
         assert "artifacts [output.txt] are up to date" in caplog.text
 
 
+def test_missing_beaver_file(tempdir, caplog: pytest.LogCaptureFixture):
+    assert beaver_build.cli.__main__(["--digest=missing-file", "some-target"])
+    assert 'cannot be loaded from' in caplog.text
+
+
 def test_entrypoint():
     subprocess.check_call(["beaver", "-h"])
