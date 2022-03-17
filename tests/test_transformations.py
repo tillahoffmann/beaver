@@ -8,13 +8,13 @@ from unittest import mock
 
 
 def test_execution_time(tempdir):
-    bt.Sleep("input.txt", [], time=.1)
-    bt.Sleep("intermediate_0.txt", "input.txt", time=.2)
-    [bt.Sleep(f"intermediate_1_{i}.txt", "intermediate_0.txt",
-              time=(i + 1) / 5) for i in range(3)]
-    output0, = bt.Sleep(
+    bt._Sleep("input.txt", [], time=.1)
+    bt._Sleep("intermediate_0.txt", "input.txt", time=.2)
+    [bt._Sleep(f"intermediate_1_{i}.txt", "intermediate_0.txt",
+               time=(i + 1) / 5) for i in range(3)]
+    output0, = bt._Sleep(
         "output_0.txt", [f"intermediate_1_{i}.txt" for i in range(3)], time=.5)
-    output1, = bt.Sleep(
+    output1, = bt._Sleep(
         "output_1.txt", ["intermediate_1_0.txt", "intermediate_0.txt"], time=.75)
     start = time.time()
     asyncio.run(ba.gather_artifacts(output0, output1))
@@ -127,7 +127,7 @@ def test_raise_if_shell_error():
 
 @pytest.mark.parametrize("use_semaphore", [False, True])
 def test_concurrency_with_semaphore(use_semaphore):
-    outputs = [output for i in range(9) for output in bt.Sleep(ba.Artifact(f"{i}"), None, time=.1)]
+    outputs = [output for i in range(9) for output in bt._Sleep(ba.Artifact(f"{i}"), None, time=.1)]
     start = time.time()
     asyncio.run(ba.gather_artifacts(*outputs, num_concurrent=3 if use_semaphore else None))
     actual_duration = time.time() - start

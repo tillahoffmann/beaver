@@ -27,7 +27,8 @@ def cancel_all_transformations() -> None:
 
 class Transformation:
     """
-    Transformation that generates outputs given inputs.
+    Base class for transformations that generates outputs given inputs. Inheriting classes should
+    implement :meth:`execute`.
 
     Args:
         outputs: Artifacts to generate.
@@ -155,7 +156,7 @@ class Transformation:
     DRY_RUN: bool = False
 
 
-class Sleep(Transformation):
+class _Sleep(Transformation):
     """
     Sleeps for a given number of seconds and create any file artifact outputs. Mostly used for
     testing and debugging.
