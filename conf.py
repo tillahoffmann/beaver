@@ -20,3 +20,4 @@ nitpick_ignore = [
 ]
 add_module_names = False
 autosectionlabel_prefix_document = True
+doctest_global_setup = "import beaver_build as bb"

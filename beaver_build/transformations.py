@@ -190,6 +190,11 @@ class Download(Transformation):
         output: Output artifact for the downloaded data.
         url: Url to download from.
         digest: Expected digest of the downloaded data.
+
+    Example:
+        >>> bb.Download("20news.tar.gz", url="https://ndownloader.figshare.com/files/5975967",
+        ...             digest="8f1b2514ca22a5ade8fbb9cfa5727df95fa587f4c87b786e15c759fa66d95610")
+        Download([] -> [File(20news.tar.gz)])
     """
     def __init__(self, output: "artifacts.File", url: str, digest: typing.Union[str, bytes]) \
             -> None:
@@ -251,6 +256,10 @@ class Subprocess(Transformation):
 
     Attributes:
         ENV: Default mapping of environment variables for all :class:`Subprocess` transformations.
+
+    Example:
+        >>> bb.Subprocess("copy.txt", "input.txt", ["cp", "$<", "$@"])
+        Subprocess([File(input.txt)] -> [File(copy.txt)])
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
                  inputs: typing.Iterable["artifacts.Artifact"],
@@ -304,6 +313,10 @@ class Subprocess(Transformation):
 class Shell(Subprocess):
     """
     Execute a command in the shell. See :class:`Subprocess` for details.
+
+    Example:
+    >>> Shell("output.txt", None, "echo hello > output.txt")
+    Shell([] -> [File(output.txt)])
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
                  inputs: typing.Iterable["artifacts.Artifact"],
