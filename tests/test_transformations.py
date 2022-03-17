@@ -1,6 +1,6 @@
 import asyncio
-from beaver import artifacts as ba
-from beaver import transformations as bt
+from beaver_build import artifacts as ba
+from beaver_build import transformations as bt
 import os
 import pytest
 import time

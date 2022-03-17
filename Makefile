@@ -6,7 +6,7 @@ lint :
 	flake8
 
 tests :
-	pytest -v --cov=beaver --cov-fail-under=100 --cov-report=term-missing --cov-report=html
+	pytest -v --cov=beaver_build --cov-fail-under=100 --cov-report=term-missing --cov-report=html
 
 docs :
 	sphinx-build . docs/_build

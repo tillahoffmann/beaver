@@ -38,7 +38,7 @@ def __main__(args: typing.Iterable[str] = None):
     parser.add_argument("--digest", "-d", help="file containing composite artifact digests",
                         default=".beaverdigests")
     parser.add_argument("--file", "-f", help="file containing artifact and transform definitions",
-                        default="dam.py")
+                        default="beaver.py")
     parser.add_argument("--num_concurrent", "-c", help="number of concurrent transformations",
                         type=int, default=1)
     parser.add_argument("--dry-run", "-n", help="print transformations without executing them",
