@@ -234,8 +234,8 @@ class Subprocess(Transformation):
 
     Environment variables are inherited by default, but global environment variables for all
     :class:`Subprocess` transformations can be specified in :attr:`ENV`, and specific environment
-    variables can be specified using the :code:`env` argument. Environment variables that are not
-    "truthy" are removed from the environment of the transformation.
+    variables can be specified using the :code:`env` argument. Environment variables that are
+    :code:`None` are removed from the environment of the transformation.
 
     Args:
         outputs: Artifacts to generate.
@@ -298,7 +298,7 @@ class Subprocess(Transformation):
                     cmd)
         # Call the process.
         env = os.environ | self.ENV | self.env
-        env = {key: str(value) for key, value in env.items() if value}
+        env = {key: str(value) for key, value in env.items() if value is not None}
         if self.shell:
             process = await asyncio.subprocess.create_subprocess_shell(cmd, env=env, **self.kwargs)
         else:

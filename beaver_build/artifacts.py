@@ -225,6 +225,13 @@ class File(Artifact):
         except FileNotFoundError:
             return None
 
+    def read(self) -> str:
+        """
+        Read the file contents.
+        """
+        with open(self.name) as fp:
+            return fp.read()
+
     @classmethod
     def glob(self, pattern: str) -> typing.Iterable["File"]:
         """

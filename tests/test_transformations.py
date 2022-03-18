@@ -202,3 +202,10 @@ def test_subprocess(tempdir):
     dummy, = bt.Subprocess("dummy.txt", None, ["sh", "-c", "echo hello > dummy.txt"])
     asyncio.run(ba.gather_artifacts(dummy))
     assert dummy.digest.hex() == "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+
+
+def test_subprocess_env(tempdir):
+    dummy, = bt.Subprocess("dummy.txt", None, ["sh", "-c", "echo $MYVAR > dummy.txt"],
+                           env={"MYVAR": 0.0})
+    asyncio.run(ba.gather_artifacts(dummy))
+    assert dummy.read().strip() == "0.0"
