@@ -32,7 +32,7 @@ def test_raise_if_multiple_parents():
 def test_shell_command(tempdir):
     output, = bt.Shell("directory/output.txt", None, "echo hello > $@")
     asyncio.run(output())
-    assert output.digest.hex() == "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+    assert output.digest == "363a3020"
 
 
 # See https://stackoverflow.com/a/59351425/1150961 for details.
@@ -50,10 +50,8 @@ class AsyncMockResponse:
 def test_download(tempdir):
     mock_response = AsyncMockResponse(b"hello world")
     with mock.patch("aiohttp.ClientSession.get", return_value=mock_response):
-        output, = bt.Download(
-            "directory/output.txt", "invalid-url",
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-        )
+        output = ba.File("directory/output.txt", "0d4a1185")
+        bt.Download(output, "invalid-url")
         asyncio.run(output())
         mock_response.read.assert_called_once()
 
@@ -61,10 +59,8 @@ def test_download(tempdir):
 def test_raise_if_download_wrong_file(tempdir):
     mock_response = AsyncMockResponse(b"bye world")
     with mock.patch("aiohttp.ClientSession.get", return_value=mock_response):
-        output, = bt.Download(
-            "output.txt", "invalid-url",
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-        )
+        output = ba.File("directory/output.txt", "0d4a1185")
+        bt.Download(output, "invalid-url")
         with pytest.raises(ValueError) as exinfo:
             asyncio.run(output())
         assert str(exinfo.value).startswith("expected digest")
@@ -74,10 +70,8 @@ def test_raise_if_download_wrong_file(tempdir):
 def test_download_exists(tempdir):
     with open("output.txt", "wb") as fp:
         fp.write(b"hello world")
-    output, = bt.Download(
-        "output.txt", "invalid-url",
-        "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-    )
+    output = ba.File("output.txt", "0d4a1185")
+    bt.Download(output, "invalid-url")
     asyncio.run(output())
 
 
@@ -201,7 +195,7 @@ def test_cancel_long_running_transformation():
 def test_subprocess(tempdir):
     dummy, = bt.Subprocess("dummy.txt", None, ["sh", "-c", "echo hello > dummy.txt"])
     asyncio.run(ba.gather_artifacts(dummy))
-    assert dummy.digest.hex() == "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+    assert dummy.digest == "363a3020"
 
 
 def test_subprocess_env(tempdir):

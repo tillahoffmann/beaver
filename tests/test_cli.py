@@ -12,8 +12,7 @@ def test_cli(tempdir, caplog: pytest.LogCaptureFixture):
         args = [f"--file={filename}", "output.txt"]
         with caplog.at_level(logging.INFO):
             beaver_build.cli.__main__(args)
-        assert beaver_build.Artifact.REGISTRY["output.txt"].digest.hex() \
-            == "f1caa5abc8bbd5cf09eb2785aad9b9b43ba905caa5937a9f98fade98fcee954b"
+        assert beaver_build.Artifact.REGISTRY["output.txt"].digest == "53703514"
 
         beaver_build.Artifact.REGISTRY.clear()
         beaver_build.Transformation.COMPOSITE_DIGESTS.clear()

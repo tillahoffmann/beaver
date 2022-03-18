@@ -1,12 +1,12 @@
 import aiohttp
 import asyncio
-import hashlib
 import logging
 import os
 import re
 import sys
 import typing
 from . import artifacts
+from . import util
 
 
 LOGGER = logging.getLogger(__name__)
@@ -68,23 +68,22 @@ class Transformation:
             digests: Mapping from output names to composite digests.
         """
         # Initialise empty digests for the outputs.
-        digests = {o.name: None for o in self.outputs}
+        composite_digests = {o.name: None for o in self.outputs}
 
         # Evaluate input digests and abort if any of them are missing.
-        input_hasher = hashlib.sha256()
+        input_digest = util.Crc32()
         for i in self.inputs:
             if i.digest is None:
-                return digests
-            input_hasher.update(i.digest)
+                return composite_digests
+            input_digest.update(bytes.fromhex(i.digest))
 
         # Construct composite digests for the outputs.
         for output in self.outputs:
             if output.digest is None:
                 continue
-            hasher = input_hasher.copy()
-            hasher.update(output.digest)
-            digests[output.name] = hasher.hexdigest()
-        return digests
+            digest = util.Crc32(bytes.fromhex(output.digest), int(input_digest)).hexdigest()
+            composite_digests[output.name] = digest
+        return composite_digests
 
     async def __call__(self) -> None:
         # Wait for all inputs artifacts.
@@ -189,32 +188,27 @@ class Download(Transformation):
     Args:
         output: Output artifact for the downloaded data.
         url: Url to download from.
-        digest: Expected digest of the downloaded data.
 
     Example:
-        >>> bb.Download("20news.tar.gz", url="https://ndownloader.figshare.com/files/5975967",
-        ...             digest="8f1b2514ca22a5ade8fbb9cfa5727df95fa587f4c87b786e15c759fa66d95610")
+        >>> data = bb.File("20news.tar.gz", expected_digest="8f1b2514...")
+        >>> bb.Download(data, url="https://ndownloader.figshare.com/files/5975967")
         Download([] -> [File(20news.tar.gz)])
     """
-    def __init__(self, output: "artifacts.File", url: str, digest: typing.Union[str, bytes]) \
-            -> None:
+    def __init__(self, output: "artifacts.File", url: str) -> None:
         super().__init__(output, [])
-        self.digest = bytes.fromhex(digest) if isinstance(digest, str) else digest
         self.url = url
 
     async def execute(self) -> None:
         # Abort if we already have the right file.
+        # TODO: This should really rely on the digest of the URL rather than the artifact.
         output, = self.outputs
-        if output.digest == self.digest:
+        if output.expected_digest and output.digest == output.expected_digest:
             return
         # Download the file.
         async with aiohttp.ClientSession() as session:
             async with session.get(self.url) as response:
                 with open(output.name, "wb") as fp:
                     fp.write(await response.read())
-        if output.digest != self.digest:
-            raise ValueError(f"expected digest `{self.digest.hex()}` but got "
-                             f"`{output.digest.hex()}` for {output}")
 
 
 class Subprocess(Transformation):

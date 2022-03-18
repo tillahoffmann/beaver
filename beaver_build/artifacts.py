@@ -1,13 +1,13 @@
 import asyncio
 import contextlib
 import glob
-import hashlib
 import logging
 import os
 import re
 import shlex
 import typing
 from . import transformations
+from . import util
 
 
 LOGGER = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ class Artifact(metaclass=ArtifactFactory):
 
     Args:
         name: Unique name of the artifact.
+        expected_digest: Digest expected when the artifact is available.
 
     Raises:
         ValueError: If the given :code:`name` is already in use by another artifact.
@@ -62,8 +63,9 @@ class Artifact(metaclass=ArtifactFactory):
         digest: Concise summary of the artifact; :code:`None` if the artifact does not exist, cannot
             be summarized, or should always be generated using its :attr:`parent` transform.
     """
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, expected_digest: str = None) -> None:
         self.name = name
+        self.expected_digest = expected_digest
         self._parent = None
         self.children = []
 
@@ -80,16 +82,18 @@ class Artifact(metaclass=ArtifactFactory):
         self._parent = value
 
     @property
-    def digest(self) -> bytes:
+    def digest(self) -> str:
         return None
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name})"
 
     async def __call__(self):
-        if self.parent is None:
-            return
-        return await self.parent
+        if self.parent:
+            await self.parent
+        if self.expected_digest and self.digest != self.expected_digest:
+            raise ValueError(f"expected digest `{self.expected_digest}` but got "
+                             f"`{self.digest}`")
 
     def __await__(self):
         # See https://stackoverflow.com/a/57078217/1150961 for details.
@@ -108,7 +112,7 @@ class Group(Artifact):
         members: Members of the group.
     """
     def __init__(self, name: str) -> None:
-        super().__init__(name)
+        super().__init__(name, expected_digest=None)
         self.members = []
 
     def __enter__(self) -> "Group":
@@ -182,8 +186,8 @@ class File(Artifact):
     """
     Artifact representing a file.
     """
-    def __init__(self, name: str) -> None:
-        super().__init__(name)
+    def __init__(self, name: str, expected_digest: str = None) -> None:
+        super().__init__(name, expected_digest)
         if re.search(r"\s", self.name):
             LOGGER.warning("whitespace in `%s` is a recipe for disaster; expect the unexpected",
                            self.name)
@@ -215,11 +219,11 @@ class File(Artifact):
             # the hash.
             last_modified = os.stat(self.name).st_mtime
             if self._last_modified is None or self._last_modified < last_modified:
-                algorithm = hashlib.sha256()
+                algorithm = util.Crc32()
                 with open(self.name, 'rb') as fp:
                     while (chunk := fp.read(4096)):
                         algorithm.update(chunk)
-                self._digest = algorithm.digest()
+                self._digest = algorithm.hexdigest()
                 self._last_modified = last_modified
             return self._digest
         except FileNotFoundError:
