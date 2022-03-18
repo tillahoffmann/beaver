@@ -49,6 +49,7 @@ setup(
         "docs": [
             "sphinx",
             "sphinx_rtd_theme",
+            "sphinx-argparse",
         ]
     },
     entry_points={

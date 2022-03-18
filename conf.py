@@ -1,10 +1,10 @@
 master_doc = "README"
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.autosectionlabel",
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     "sphinx.ext.napoleon",
+    "sphinxarg.ext",
     "sphinx_rtd_theme",
 ]
 project = "beaver"
@@ -19,5 +19,4 @@ nitpick_ignore = [
     ("py:func", "asyncio.subprocess.create_subprocess_shell"),
 ]
 add_module_names = False
-autosectionlabel_prefix_document = True
 doctest_global_setup = "import beaver_build as bb"

@@ -52,4 +52,6 @@ Why not use ...?
 - `snakemake <https://snakemake.github.io>`_ uses a non-standard python syntax, steepening the learning curve.
 
 .. toctree::
-   docs/interface
+  :hidden:
+  
+  docs/interface

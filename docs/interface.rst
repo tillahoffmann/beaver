@@ -1,6 +1,14 @@
 Interface
 =========
 
+Command line
+------------
+
+.. argparse::
+   :module: beaver_build.cli
+   :func: build_parser
+   :prog: beaver
+
 Transformations
 ---------------
 

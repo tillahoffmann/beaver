@@ -9,7 +9,7 @@ import subprocess
 def test_cli(tempdir, caplog: pytest.LogCaptureFixture):
     filename = os.path.join(os.path.dirname(__file__), "beaver.py")
     with beaver_build.working_directory(tempdir):
-        args = [f"--file={filename}", "output.txt"]
+        args = [f"--file={filename}", "build", "output.txt"]
         with caplog.at_level(logging.INFO):
             beaver_build.cli.__main__(args)
         assert beaver_build.Artifact.REGISTRY["output.txt"].digest == "53703514"
@@ -33,7 +33,7 @@ def test_cli(tempdir, caplog: pytest.LogCaptureFixture):
 
 
 def test_missing_beaver_file(tempdir, caplog: pytest.LogCaptureFixture):
-    assert beaver_build.cli.__main__(["--digest=missing-file", "some-target"])
+    assert beaver_build.cli.__main__(["--digest=missing-file", "build", "some-target"])
     assert 'cannot be loaded from' in caplog.text
 
 

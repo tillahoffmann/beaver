@@ -115,7 +115,10 @@ snowballstemmer==2.2.0
 sphinx==4.4.0
     # via
     #   beaver-build
+    #   sphinx-argparse
     #   sphinx-rtd-theme
+sphinx-argparse==0.3.1
+    # via beaver-build
 sphinx-rtd-theme==1.0.0
     # via beaver-build
 sphinxcontrib-applehelp==1.0.2
