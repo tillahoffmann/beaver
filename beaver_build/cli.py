@@ -3,6 +3,7 @@ import asyncio
 import importlib
 import json
 import logging
+import re
 import typing
 from .artifacts import ArtifactFactory, gather_artifacts
 from .transformations import cancel_all_transformations, Transformation
@@ -33,7 +34,10 @@ class Formatter(logging.Formatter):
         return super().format(record)
 
 
-def build(args: argparse.Namespace) -> int:
+def build_artifacts(args: argparse.Namespace) -> int:
+    """
+    Build one or more artifacts.
+    """
     Transformation.DRY_RUN = args.dry_run
 
     try:
@@ -49,6 +53,26 @@ def build(args: argparse.Namespace) -> int:
         cancel_all_transformations()
 
 
+def list_artifacts(args: argparse.Namespace) -> int:
+    """
+    List artifacts, possibly matching a pattern.
+    """
+    lines = []
+    for name, artifact in sorted(ArtifactFactory.REGISTRY.items()):
+        if args.pattern and not re.match(args.pattern, name):
+            continue
+        if args.stale and not artifact.is_stale:
+            continue
+        if args.raw:
+            prefix = ""
+        elif artifact.is_stale:
+            prefix = "\U0001f7e1 "
+        else:
+            prefix = "\U0001f7e2 "
+        lines.append(f'{prefix}{name}')
+    print('\n'.join(lines))
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Top-level parser for common arguments.
     parser = argparse.ArgumentParser()
@@ -61,13 +85,21 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(title="command", help="command to execute")
 
     # Subparser for building artifacts.
-    build_parser = subparsers.add_parser("build", help="build one or more artifacts")
+    build_parser = subparsers.add_parser("build", help=build_artifacts.__doc__.strip())
     build_parser.add_argument("--num_concurrent", "-c", help="number of concurrent transformations",
                               type=int, default=1)
     build_parser.add_argument("--dry-run", "-n", action="store_true",
                               help="print transformations without executing them")
     build_parser.add_argument("artifacts", help="artifacts to generate", nargs="+")
-    build_parser.set_defaults(func=build)
+    build_parser.set_defaults(func=build_artifacts)
+
+    # Subparser for listing artifacts.
+    list_parser = subparsers.add_parser("list", help=list_artifacts.__doc__.strip())
+    list_parser.add_argument("--stale", "-s", help="list only stale artifacts", action="store_true")
+    list_parser.add_argument("--raw", "-r", help="list names only without status indicators",
+                             action="store_true")
+    list_parser.add_argument("pattern", help="pattern to match artifacts against", nargs="?")
+    list_parser.set_defaults(func=list_artifacts)
     return parser
 
 

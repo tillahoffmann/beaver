@@ -62,6 +62,7 @@ class Artifact(metaclass=ArtifactFactory):
             of the directed acyclic graph.
         digest: Concise summary of the artifact; :code:`None` if the artifact does not exist, cannot
             be summarized, or should always be generated using its :attr:`parent` transform.
+        is_stale: Whether the artifact is stale and needs to be generated.
     """
     def __init__(self, name: str, expected_digest: str = None) -> None:
         self.name = name
@@ -84,6 +85,12 @@ class Artifact(metaclass=ArtifactFactory):
     @property
     def digest(self) -> str:
         return None
+
+    @property
+    def is_stale(self) -> bool:
+        if self._parent:
+            return self in self._parent.stale_outputs
+        return False
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name})"
