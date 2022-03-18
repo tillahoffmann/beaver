@@ -333,7 +333,10 @@ soupsieve==2.3.1
 sphinx==4.4.0
     # via
     #   -r test_requirements.txt
+    #   sphinx-argparse
     #   sphinx-rtd-theme
+sphinx-argparse==0.3.1
+    # via -r test_requirements.txt
 sphinx-rtd-theme==1.0.0
     # via -r test_requirements.txt
 sphinxcontrib-applehelp==1.0.2

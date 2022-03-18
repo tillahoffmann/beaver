@@ -3,8 +3,9 @@ import asyncio
 import importlib
 import json
 import logging
+import re
 import typing
-from .artifacts import ArtifactFactory, gather_artifacts
+from .artifacts import ArtifactFactory, gather_artifacts, Group
 from .transformations import cancel_all_transformations, Transformation
 
 
@@ -33,19 +34,79 @@ class Formatter(logging.Formatter):
         return super().format(record)
 
 
-def __main__(args: typing.Iterable[str] = None) -> int:
+def build_artifacts(args: argparse.Namespace) -> int:
+    """
+    Build one or more artifacts.
+    """
+    Transformation.DRY_RUN = args.dry_run
+
+    try:
+        # Get the targets we want to build and wait for them to complete.
+        artifacts = [ArtifactFactory.REGISTRY[name] for name in args.artifacts]
+        asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
+    finally:
+        # Save the updated composite digests.
+        with open(args.digest, "w") as fp:
+            json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
+        LOGGER.debug("saved %d composite digests to `%s`", len(Transformation.COMPOSITE_DIGESTS),
+                     args.digest)
+        cancel_all_transformations()
+
+
+def list_artifacts(args: argparse.Namespace) -> int:
+    """
+    List artifacts, possibly matching a pattern.
+    """
+    lines = []
+    for name, artifact in sorted(ArtifactFactory.REGISTRY.items()):
+        if args.pattern and not re.match(args.pattern, name):
+            continue
+        if args.stale and not artifact.is_stale:
+            continue
+        if args.raw:
+            prefix = ""
+        elif artifact.parent is None and not isinstance(artifact, Group):
+            prefix = '\u26aa'
+        elif artifact.is_stale:
+            prefix = "\U0001f7e1 "
+        else:
+            prefix = "\U0001f7e2 "
+        lines.append(f'{prefix}{name}')
+    print('\n'.join(lines))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    # Top-level parser for common arguments.
     parser = argparse.ArgumentParser()
     parser.add_argument("--digest", "-d", help="file containing composite artifact digests",
                         default=".beaverdigests")
     parser.add_argument("--file", "-f", help="file containing artifact and transform definitions",
                         default="beaver.py")
-    parser.add_argument("--num_concurrent", "-c", help="number of concurrent transformations",
-                        type=int, default=1)
-    parser.add_argument("--dry-run", "-n", help="print transformations without executing them",
-                        action="store_true")
     parser.add_argument("--log_level", "-l", help="level of log messages to emit", default="info",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], type=str.upper)
-    parser.add_argument("artifacts", help="artifacts to generate", nargs="+")
+    subparsers = parser.add_subparsers(title="command", help="command to execute")
+
+    # Subparser for building artifacts.
+    build_parser = subparsers.add_parser("build", help=build_artifacts.__doc__.strip())
+    build_parser.add_argument("--num_concurrent", "-c", help="number of concurrent transformations",
+                              type=int, default=1)
+    build_parser.add_argument("--dry-run", "-n", action="store_true",
+                              help="print transformations without executing them")
+    build_parser.add_argument("artifacts", help="artifacts to generate", nargs="+")
+    build_parser.set_defaults(func=build_artifacts)
+
+    # Subparser for listing artifacts.
+    list_parser = subparsers.add_parser("list", help=list_artifacts.__doc__.strip())
+    list_parser.add_argument("--stale", "-s", help="list only stale artifacts", action="store_true")
+    list_parser.add_argument("--raw", "-r", help="list names only without status indicators",
+                             action="store_true")
+    list_parser.add_argument("pattern", help="pattern to match artifacts against", nargs="?")
+    list_parser.set_defaults(func=list_artifacts)
+    return parser
+
+
+def __main__(args: typing.Iterable[str] = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(args)
 
     # Configure logging to stderr.
@@ -54,8 +115,6 @@ def __main__(args: typing.Iterable[str] = None) -> int:
     handler = logging.StreamHandler()
     handler.setFormatter(Formatter("\U0001f9ab %(_prefix)s%(levelname)s%(_suffix)s: %(message)s"))
     root_logger.addHandler(handler)
-
-    Transformation.DRY_RUN = args.dry_run
 
     # Load the artifact and transformation configuration.
     try:
@@ -80,17 +139,8 @@ def __main__(args: typing.Iterable[str] = None) -> int:
                      args.digest)
         pass
 
-    try:
-        # Get the targets we want to build and wait for them to complete.
-        artifacts = [ArtifactFactory.REGISTRY[name] for name in args.artifacts]
-        asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
-    finally:
-        # Save the updated composite digests.
-        with open(args.digest, "w") as fp:
-            json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
-        LOGGER.debug("saved %d composite digests to `%s`", len(Transformation.COMPOSITE_DIGESTS),
-                     args.digest)
-        cancel_all_transformations()
+    # Execute the subcommand.
+    return args.func(args)
 
 
 if __name__ == "__main__":  # pragma: no cover
