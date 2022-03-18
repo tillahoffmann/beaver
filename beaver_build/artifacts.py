@@ -92,6 +92,8 @@ class Artifact(metaclass=ArtifactFactory):
         if self.parent:
             await self.parent
         if self.expected_digest and self.digest != self.expected_digest:
+            # Pop the digest from the library to ensure it gets rebuilt.
+            transformations.Transformation.COMPOSITE_DIGESTS.pop(self.name, None)
             raise ValueError(f"expected digest `{self.expected_digest}` but got "
                              f"`{self.digest}`")
 

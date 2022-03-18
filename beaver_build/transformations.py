@@ -181,14 +181,14 @@ class _Sleep(Transformation):
 
 class Download(Transformation):
     """
-    Download a file and verify its digest.
+    Download a file.
 
     Args:
         output: Output artifact for the downloaded data.
         url: Url to download from.
 
     Example:
-        >>> data = bb.File("20news.tar.gz", expected_digest="8f1b2514...")
+        >>> data = bb.File("20news.tar.gz", expected_digest="af604312")
         >>> bb.Download(data, url="https://ndownloader.figshare.com/files/5975967")
         Download([] -> [File(20news.tar.gz)])
     """
