@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import sys
+import time
 import typing
 from . import artifacts
 from . import util
@@ -164,19 +165,23 @@ class _Sleep(Transformation):
         time: Number of seconds to sleep for.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
-                 inputs: typing.Iterable["artifacts.Artifact"], *, time: float) -> None:
+                 inputs: typing.Iterable["artifacts.Artifact"], *, sleep: float) -> None:
         super().__init__(outputs, inputs)
-        self.time = time
+        self.sleep = sleep
+        self.start = None
+        self.end = None
 
     async def execute(self) -> None:
-        LOGGER.debug("running %s for %f seconds...", self, self.time)
-        await asyncio.sleep(self.time)
+        self.start = time.time()
+        LOGGER.debug("running %s for %f seconds...", self, self.sleep)
+        await asyncio.sleep(self.sleep)
         for output in self.outputs:
             if isinstance(output, artifacts.File):
                 with open(output.name, "w") as fp:
                     fp.write(output.name)
                 LOGGER.debug("created %s", output)
         LOGGER.debug("completed %s", self)
+        self.end = time.time()
 
 
 class Download(Transformation):

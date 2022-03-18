@@ -6,6 +6,7 @@ import tempfile
 @pytest.fixture(autouse=True)
 def clean_slate():
     beaver_build.reset()
+    beaver_build.cancel_all_transformations()
 
 
 @pytest.fixture
