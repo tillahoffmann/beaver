@@ -18,18 +18,18 @@ def test_cli(tempdir, caplog: pytest.LogCaptureFixture):
         beaver_build.Transformation.COMPOSITE_DIGESTS.clear()
 
         # Verify that two transformations were executed by inspecting the logs.
-        assert "artifacts [input1.txt, input2.txt] are stale" in caplog.text
-        assert "generated artifacts [input1.txt, input2.txt]" in caplog.text
-        assert "artifacts [output.txt] are stale" in caplog.text
-        assert "generated artifacts [output.txt]" in caplog.text
+        assert "artifacts [File(input1.txt), File(input2.txt)] are stale" in caplog.text
+        assert "generated artifacts [File(input1.txt), File(input2.txt)]" in caplog.text
+        assert "artifacts [File(output.txt)] are stale" in caplog.text
+        assert "generated artifacts [File(output.txt)]" in caplog.text
 
         # Run again and verify that no transformations were executed.
         caplog.clear()
         with caplog.at_level(logging.INFO):
             beaver_build.cli.__main__(args)
 
-        assert "artifacts [input1.txt, input2.txt] are up to date" in caplog.text
-        assert "artifacts [output.txt] are up to date" in caplog.text
+        assert "artifacts [File(input1.txt), File(input2.txt)] are up to date" in caplog.text
+        assert "artifacts [File(output.txt)] are up to date" in caplog.text
 
 
 def test_missing_beaver_file(tempdir, caplog: pytest.LogCaptureFixture):

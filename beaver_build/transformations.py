@@ -35,6 +35,7 @@ class Transformation:
         inputs: Artifacts consumed by the transformation.
 
     Attributes:
+        stale_outputs: Sequence of outputs that are stale and need to be updated.
         COMPOSITE_DIGESTS: Mapping of artifact names to composite digests. See
             :func:`evaluate_composite_digests` for details.
         SEMAPHORE: Semaphore to limit the number of concurrent transformations being executed.
@@ -93,31 +94,29 @@ class Transformation:
             self.future = asyncio.create_task(self._execute())
         await self.future
 
+    @property
+    def stale_outputs(self) -> typing.Iterable["artifacts.Artifact"]:
+        # Get the outputs whose composite digests are `None` or different from the library of
+        # composite digests.
+        composite_digests = self.evaluate_composite_digests()
+        return [output for output in self.outputs if composite_digests[output.name] is None or
+                composite_digests[output.name] != self.COMPOSITE_DIGESTS.get(output.name)]
+
     async def _execute(self) -> None:
         """
         Private wrapper to determine whether the transformation needs to be executed and wrap it in
         a semaphore to limit concurrency.
         """
-        # Check if any composite indices have changed. If no, there's nothing further to be done.
-        composite_digests = self.evaluate_composite_digests()
-        stale_artifacts = [name for name, digest in composite_digests.items() if digest is None or
-                           digest != self.COMPOSITE_DIGESTS.get(name)]
+        stale_artifacts = self.stale_outputs
         if not stale_artifacts:
-            LOGGER.debug("composite digests %s are unchanged; %s will not be executed",
-                         composite_digests, self)
-            LOGGER.info("\U0001f7e2 artifacts [%s] are up to date",
-                        ", ".join(o.name for o in self.outputs))
+            LOGGER.info("\U0001f7e2 artifacts %s are up to date", self.outputs)
             return
-        LOGGER.debug("composite digests of %s have changed: %s", ", ".join(stale_artifacts),
-                     composite_digests)
 
         if self.DRY_RUN:
-            LOGGER.info("\U0001f7e1 artifacts [%s] are stale; transformation not scheduled because "
-                        "of dry run", ", ".join(stale_artifacts))
+            LOGGER.info("\U0001f7e1 artifacts %s are stale; dry run", stale_artifacts)
             return
 
-        LOGGER.info("\U0001f7e1 artifacts [%s] are stale; schedule transformation",
-                    ", ".join(stale_artifacts))
+        LOGGER.info("\U0001f7e1 artifacts %s are stale; transformation scheduled", stale_artifacts)
 
         try:
             if self.SEMAPHORE is None:
@@ -128,11 +127,10 @@ class Transformation:
 
             # Update the composite digests.
             composite_digests = self.evaluate_composite_digests()
-            LOGGER.info("\u2705 generated artifacts [%s]", ", ".join(o.name for o in self.outputs))
+            LOGGER.info("\u2705 generated artifacts %s", self.outputs)
             self.COMPOSITE_DIGESTS.update(composite_digests)
         except Exception as ex:
-            LOGGER.error("\u274c failed to generate artifacts [%s]: %s",
-                         ", ".join(o.name for o in self.outputs), ex)
+            LOGGER.error("\u274c failed to generate artifacts %s: %s", self.outputs, ex)
             raise
 
     async def execute(self) -> None:
