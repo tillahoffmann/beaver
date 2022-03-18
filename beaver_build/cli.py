@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import typing
-from .artifacts import ArtifactFactory, gather_artifacts
+from .artifacts import ArtifactFactory, gather_artifacts, Group
 from .transformations import cancel_all_transformations, Transformation
 
 
@@ -65,6 +65,8 @@ def list_artifacts(args: argparse.Namespace) -> int:
             continue
         if args.raw:
             prefix = ""
+        elif artifact.parent is None and not isinstance(artifact, Group):
+            prefix = '\u26aa'
         elif artifact.is_stale:
             prefix = "\U0001f7e1 "
         else:

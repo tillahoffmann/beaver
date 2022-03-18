@@ -137,6 +137,10 @@ class Group(Artifact):
     async def __call__(self):
         await asyncio.gather(*self.members)
 
+    @property
+    def is_stale(self) -> bool:
+        return any(member.is_stale for member in self.members)
+
     STACK: list["Group"] = []
 
     @classmethod

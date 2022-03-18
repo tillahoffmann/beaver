@@ -1,8 +1,11 @@
 import beaver_build as bb
 
+# An artifact that "just exists" and isn't generated.
+exists = bb.Artifact("exists")
 
 # Generate some arbitrary inputs.
-inputs = bb.transformations._Sleep(["input1.txt", "input2.txt"], None, time=0)
+with bb.Group('pre'):
+    inputs = bb.transformations._Sleep(["input1.txt", "input2.txt"], None, sleep=0)
 
 # Concatenate the inputs.
 output = bb.Shell("output.txt", inputs, "cat $^ > $@")
