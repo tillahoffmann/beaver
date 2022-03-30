@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import typing
-from .artifacts import ArtifactFactory, gather_artifacts, Group
+from .artifacts import Artifact, ArtifactFactory, gather_artifacts, Group
 from .transformations import cancel_all_transformations, Transformation
 
 
@@ -36,43 +36,83 @@ class Formatter(logging.Formatter):
 
 def build_artifacts(args: argparse.Namespace) -> int:
     """
-    Build one or more artifacts.
+    Build artifacts.
     """
     Transformation.DRY_RUN = args.dry_run
 
     try:
         # Get the targets we want to build and wait for them to complete.
-        artifacts = [ArtifactFactory.REGISTRY[name] for name in args.artifacts]
+        artifacts = match_artifacts(args)
         asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
     finally:
-        # Save the updated composite digests.
-        with open(args.digest, "w") as fp:
-            json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
-        LOGGER.debug("saved %d composite digests to `%s`", len(Transformation.COMPOSITE_DIGESTS),
-                     args.digest)
+        save_composite_digests(args)
         cancel_all_transformations()
 
 
 def list_artifacts(args: argparse.Namespace) -> int:
     """
-    List artifacts, possibly matching a pattern.
+    List artifacts.
     """
     lines = []
-    for name, artifact in sorted(ArtifactFactory.REGISTRY.items()):
-        if args.pattern and not re.match(args.pattern, name):
-            continue
+    for artifact in match_artifacts(args):
         if args.stale and not artifact.is_stale:
             continue
         if args.raw:
             prefix = ""
         elif artifact.parent is None and not isinstance(artifact, Group):
-            prefix = '\u26aa'
+            prefix = '\u26aa '
         elif artifact.is_stale:
             prefix = "\U0001f7e1 "
         else:
             prefix = "\U0001f7e2 "
-        lines.append(f'{prefix}{name}')
+        lines.append(f'{prefix}{artifact.name}')
     print('\n'.join(lines))
+
+
+def reset_composite_digests(args: argparse.Namespace) -> int:
+    """
+    Reset the composite digest of artifacts
+    """
+    num_reset = 0
+    for artifact in match_artifacts(args):
+        if artifact.name not in ArtifactFactory.REGISTRY:  # pragma: no cover
+            raise RuntimeError(f"artifact `{artifact.name}` is not in the registry")
+        elif not Transformation.COMPOSITE_DIGESTS.pop(artifact.name, None):
+            LOGGER.info("artifact `%s` did not have a composite digest", artifact.name)
+        else:
+            num_reset += 1
+    save_composite_digests(args)
+    LOGGER.info("reset %d composite digests", num_reset)
+
+
+def save_composite_digests(args: argparse.Namespace) -> None:
+    with open(args.digest, "w") as fp:
+        json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
+    LOGGER.debug("saved %d composite digests to `%s`", len(Transformation.COMPOSITE_DIGESTS),
+                 args.digest)
+
+
+def match_artifacts(args: argparse.Namespace) -> typing.Iterable[Artifact]:
+    """
+    Obtain all artifacts that match any of the patterns.
+    """
+    if args.all:
+        return ArtifactFactory.REGISTRY.values()
+    artifacts = [
+        value for key, value in ArtifactFactory.REGISTRY.items()
+        if any(re.match(pattern, key) for pattern in args.patterns)
+    ]
+    if not artifacts:
+        LOGGER.warning("patterns did not match any artifacts; use `--all` to select all artifacts")
+    return artifacts
+
+
+def add_pattern_arguments(parser: argparse.ArgumentParser) -> None:
+    """
+    Add arguments to be used for matching artifacts to a parser.
+    """
+    parser.add_argument("--all", "-a", help="match all artifacts", action="store_true")
+    parser.add_argument("patterns", help="patterns to match artifacts against", nargs="*")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -92,7 +132,6 @@ def build_parser() -> argparse.ArgumentParser:
                               type=int, default=1)
     build_parser.add_argument("--dry-run", "-n", action="store_true",
                               help="print transformations without executing them")
-    build_parser.add_argument("artifacts", help="artifacts to generate", nargs="+")
     build_parser.set_defaults(func=build_artifacts)
 
     # Subparser for listing artifacts.
@@ -100,8 +139,15 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--stale", "-s", help="list only stale artifacts", action="store_true")
     list_parser.add_argument("--raw", "-r", help="list names only without status indicators",
                              action="store_true")
-    list_parser.add_argument("pattern", help="pattern to match artifacts against", nargs="?")
     list_parser.set_defaults(func=list_artifacts)
+
+    # Subparser for resetting the composite digest of artifacts.
+    reset_parser = subparsers.add_parser("reset", help=reset_composite_digests.__doc__.strip())
+    reset_parser.set_defaults(func=reset_composite_digests)
+
+    for subparser in [build_parser, list_parser, reset_parser]:
+        add_pattern_arguments(subparser)
+
     return parser
 
 

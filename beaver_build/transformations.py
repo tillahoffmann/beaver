@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 import re
+import shlex
 import sys
 import time
 import typing
@@ -288,11 +289,12 @@ class Subprocess(Transformation):
     async def execute(self) -> None:
         # Prepare the command.
         if self.shell:
-            cmd = self._apply_substitutions(self.cmd)
+            pretty_cmd = cmd = self._apply_substitutions(self.cmd)
         else:
             cmd = [self._apply_substitutions(str(part)) for part in self.cmd]
+            pretty_cmd = " ".join(map(shlex.quote, cmd))
         LOGGER.info("\u2699\ufe0f execute %s command `%s`", "shell" if self.shell else "subprocess",
-                    cmd)
+                    pretty_cmd)
         # Call the process.
         env = os.environ | self.ENV | self.env
         env = {key: str(value) for key, value in env.items() if value is not None}

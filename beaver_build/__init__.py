@@ -6,6 +6,9 @@ from .util import *  # noqa: F401, F403
 
 
 def reset() -> None:
+    """
+    Reset all global variables.
+    """
     ArtifactFactory.REGISTRY.clear()
     Group.STACK.clear()
     Shell.ENV.clear()
