@@ -1,10 +1,10 @@
 import argparse
 import asyncio
 import importlib
-import json
 import logging
 import re
 import typing
+from . import load_cache, save_cache
 from .artifacts import Artifact, ArtifactFactory, gather_artifacts, Group
 from .transformations import cancel_all_transformations, Transformation
 
@@ -45,7 +45,6 @@ def build_artifacts(args: argparse.Namespace) -> int:
         artifacts = match_artifacts(args)
         asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
     finally:
-        save_composite_digests(args)
         cancel_all_transformations()
 
 
@@ -81,15 +80,7 @@ def reset_composite_digests(args: argparse.Namespace) -> int:
             LOGGER.info("artifact `%s` did not have a composite digest", artifact.name)
         else:
             num_reset += 1
-    save_composite_digests(args)
     LOGGER.info("reset %d composite digests", num_reset)
-
-
-def save_composite_digests(args: argparse.Namespace) -> None:
-    with open(args.digest, "w") as fp:
-        json.dump(Transformation.COMPOSITE_DIGESTS, fp, indent=4)
-    LOGGER.debug("saved %d composite digests to `%s`", len(Transformation.COMPOSITE_DIGESTS),
-                 args.digest)
 
 
 def match_artifacts(args: argparse.Namespace) -> typing.Iterable[Artifact]:
@@ -118,8 +109,8 @@ def add_pattern_arguments(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     # Top-level parser for common arguments.
     parser = argparse.ArgumentParser()
-    parser.add_argument("--digest", "-d", help="file containing composite artifact digests",
-                        default=".beaverdigests")
+    parser.add_argument("--cache", "-c", default=".beavercache",
+                        help="file containing cached information, including composite digests")
     parser.add_argument("--file", "-f", help="file containing artifact and transform definitions",
                         default="beaver.py")
     parser.add_argument("--log_level", "-l", help="level of log messages to emit", default="info",
@@ -172,21 +163,11 @@ def __main__(args: typing.Iterable[str] = None) -> int:
         LOGGER.error("beaver configuration cannot be loaded from %s", args.file)
         return 1
 
-    # Load the composite digests but only retain the composite digests of known artifacts.
-    try:
-        with open(args.digest) as fp:
-            composite_digests = json.load(fp)
-        composite_digests = {name: digest for name, digest in composite_digests.items()
-                             if name in ArtifactFactory.REGISTRY}
-        Transformation.COMPOSITE_DIGESTS = composite_digests
-        LOGGER.debug("loaded %d composite digests from `%s`", len(composite_digests), args.digest)
-    except FileNotFoundError:
-        LOGGER.debug("did not load composite digests because the file `%s` does not exist",
-                     args.digest)
-        pass
-
-    # Execute the subcommand.
-    return args.func(args)
+    # Load the cache and execute the subcommand.
+    load_cache(args.cache)
+    result = args.func(args)
+    save_cache(args.cache)
+    return result
 
 
 if __name__ == "__main__":  # pragma: no cover
