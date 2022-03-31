@@ -73,11 +73,11 @@ class Artifact(metaclass=ArtifactFactory):
     children: typing.Iterable[transformations.Transformation]
 
     @property
-    def parent(self) -> 'transformations.Transformation':
+    def parent(self) -> "transformations.Transformation":
         return self._parent
 
     @parent.setter
-    def parent(self, value: 'transformations.Transformation') -> None:
+    def parent(self, value: "transformations.Transformation") -> None:
         if self._parent is not None:
             raise RuntimeError(f"{self} is already associated with a transformation")
         self._parent = value
@@ -204,8 +204,6 @@ class File(Artifact):
         if re.search(r"\s", self.name):
             LOGGER.warning("whitespace in `%s` is a recipe for disaster; expect the unexpected",
                            self.name)
-        self._last_modified = None
-        self._digest = None
 
     async def __call__(self):
         # Omit directory creation and existence checks during dry run.
@@ -225,20 +223,28 @@ class File(Artifact):
                 message = f"{self} does not exist and cannot be generated"
             raise FileNotFoundError(message)
 
+    DIGESTS = {}
+
     @property
     def digest(self):
         try:
-            # Only re-evaluate the digest if the file has not been modified since we last computed
-            # the hash.
+            # Return the digest if the file hasn't been modified since we last computed the digest.
+            cached_digest = self.DIGESTS.get(self.name)
             last_modified = os.stat(self.name).st_mtime
-            if self._last_modified is None or self._last_modified < last_modified:
-                algorithm = util.Crc32()
-                with open(self.name, 'rb') as fp:
-                    while (chunk := fp.read(4096)):
-                        algorithm.update(chunk)
-                self._digest = algorithm.hexdigest()
-                self._last_modified = last_modified
-            return self._digest
+            if cached_digest and cached_digest["last_modified"] >= last_modified:
+                return cached_digest["digest"]
+
+            # Evaluate the digest.
+            algorithm = util.Crc32()
+            with open(self.name, "rb") as fp:
+                while (chunk := fp.read(4096)):
+                    algorithm.update(chunk)
+            digest = algorithm.hexdigest()
+            self.DIGESTS[self.name] = {
+                "digest": digest,
+                "last_modified": last_modified,
+            }
+            return digest
         except FileNotFoundError:
             return None
 
