@@ -1,9 +1,9 @@
 import json
 import logging
 from .artifacts import ArtifactFactory, File, Group
-from .transformations import Shell, Transformation
+from .transforms import Shell, Transform
 from .artifacts import *  # noqa: F401, F403
-from .transformations import *   # noqa: F401, F403
+from .transforms import *   # noqa: F401, F403
 from .util import *  # noqa: F401, F403
 
 
@@ -18,9 +18,9 @@ def reset() -> None:
     File.DIGESTS.clear()
     Group.STACK.clear()
     Shell.ENV.clear()
-    Transformation.COMPOSITE_DIGESTS.clear()
-    Transformation.DRY_RUN = False
-    Transformation.SEMAPHORE = None
+    Transform.COMPOSITE_DIGESTS.clear()
+    Transform.DRY_RUN = False
+    Transform.SEMAPHORE = None
 
 
 def save_cache(filename: str) -> None:
@@ -28,12 +28,12 @@ def save_cache(filename: str) -> None:
     Save all cached information.
     """
     cache = {
-        "composite_digests": Transformation.COMPOSITE_DIGESTS,
+        "composite_digests": Transform.COMPOSITE_DIGESTS,
         "file_digests": File.DIGESTS,
     }
     with open(filename, "w") as fp:
         json.dump(cache, fp, indent=4)
-    LOGGER.debug("saved %d composite digests to `%s`", len(Transformation.COMPOSITE_DIGESTS),
+    LOGGER.debug("saved %d composite digests to `%s`", len(Transform.COMPOSITE_DIGESTS),
                  filename)
     LOGGER.debug("saved %d file digests to `%s`", len(File.DIGESTS), filename)
 
@@ -53,7 +53,7 @@ def load_cache(filename: str) -> None:
     if composite_digests := cache.get("composite_digests"):
         composite_digests = {name: digest for name, digest in composite_digests.items()
                              if name in ArtifactFactory.REGISTRY}
-        Transformation.COMPOSITE_DIGESTS = composite_digests
+        Transform.COMPOSITE_DIGESTS = composite_digests
         LOGGER.debug("loaded %d composite digests from `%s`", composite_digests, filename)
 
     # Load file digests.

@@ -6,7 +6,7 @@ import re
 import typing
 from . import load_cache, save_cache
 from .artifacts import Artifact, ArtifactFactory, gather_artifacts, Group
-from .transformations import cancel_all_transformations, Transformation
+from .transforms import cancel_all_transforms, Transform
 
 
 LOGGER = logging.getLogger("beaver")
@@ -38,14 +38,14 @@ def build_artifacts(args: argparse.Namespace) -> int:
     """
     Build artifacts.
     """
-    Transformation.DRY_RUN = args.dry_run
+    Transform.DRY_RUN = args.dry_run
 
     try:
         # Get the targets we want to build and wait for them to complete.
         artifacts = match_artifacts(args)
         asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
     finally:
-        cancel_all_transformations()
+        cancel_all_transforms()
 
 
 def list_artifacts(args: argparse.Namespace) -> int:
@@ -76,7 +76,7 @@ def reset_composite_digests(args: argparse.Namespace) -> int:
     for artifact in match_artifacts(args):
         if artifact.name not in ArtifactFactory.REGISTRY:  # pragma: no cover
             raise RuntimeError(f"artifact `{artifact.name}` is not in the registry")
-        elif not Transformation.COMPOSITE_DIGESTS.pop(artifact.name, None):
+        elif not Transform.COMPOSITE_DIGESTS.pop(artifact.name, None):
             LOGGER.info("artifact `%s` did not have a composite digest", artifact.name)
         else:
             num_reset += 1
@@ -119,10 +119,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Subparser for building artifacts.
     build_parser = subparsers.add_parser("build", help=build_artifacts.__doc__.strip())
-    build_parser.add_argument("--num_concurrent", "-c", help="number of concurrent transformations",
+    build_parser.add_argument("--num_concurrent", "-c", help="number of concurrent transforms",
                               type=int, default=1)
     build_parser.add_argument("--dry-run", "-n", action="store_true",
-                              help="print transformations without executing them")
+                              help="print transforms without executing them")
     build_parser.set_defaults(func=build_artifacts)
 
     # Subparser for listing artifacts.
@@ -153,7 +153,7 @@ def __main__(args: typing.Iterable[str] = None) -> int:
     handler.setFormatter(Formatter("\U0001f9ab %(_prefix)s%(levelname)s%(_suffix)s: %(message)s"))
     root_logger.addHandler(handler)
 
-    # Load the artifact and transformation configuration.
+    # Load the artifact and transform configuration.
     try:
         spec = importlib.util.spec_from_file_location("config", args.file)
         config = importlib.util.module_from_spec(spec)
