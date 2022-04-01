@@ -14,9 +14,9 @@ from . import util
 LOGGER = logging.getLogger(__name__)
 
 
-def cancel_all_transformations() -> None:
+def cancel_all_transforms() -> None:
     """
-    Cancel all running transformations.
+    Cancel all running transforms.
     """
     try:
         tasks = asyncio.all_tasks()
@@ -27,21 +27,21 @@ def cancel_all_transformations() -> None:
         task.cancel()
 
 
-class Transformation:
+class Transform:
     """
-    Base class for transformations that generates outputs given inputs. Inheriting classes should
+    Base class for transforms that generates outputs given inputs. Inheriting classes should
     implement :meth:`execute`.
 
     Args:
         outputs: Artifacts to generate.
-        inputs: Artifacts consumed by the transformation.
+        inputs: Artifacts consumed by the transform.
 
     Attributes:
         stale_outputs: Sequence of outputs that are stale and need to be updated.
         COMPOSITE_DIGESTS: Mapping of artifact names to composite digests. See
             :func:`evaluate_composite_digests` for details.
-        SEMAPHORE: Semaphore to limit the number of concurrent transformations being executed.
-        DRY_RUN: Whether to show transformations without executing them.
+        SEMAPHORE: Semaphore to limit the number of concurrent transforms being executed.
+        DRY_RUN: Whether to show transforms without executing them.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
                  inputs: typing.Iterable["artifacts.Artifact"]) -> None:
@@ -59,12 +59,12 @@ class Transformation:
 
     def evaluate_composite_digests(self) -> dict[str, bytes]:
         """
-        Evaluate composite digests for all :code:`outputs` of the transformation.
+        Evaluate composite digests for all :code:`outputs` of the transform.
 
         A composite digest is defined as the digest of the digests of inputs and the digest of the
         output, i.e. it is a joint, concise summary of both inputs and outputs. If any composite
         digest differs from the digest in :attr:`COMPOSITE_DIGESTS` or is :code:`None`, the
-        transformation needs to be executed. A composite digest is :code:`None` if the corresponding
+        transform needs to be executed. A composite digest is :code:`None` if the corresponding
         output digest is :code:`None` or any input digests are :code:`None`.
 
         Returns:
@@ -91,10 +91,36 @@ class Transformation:
     async def __call__(self) -> None:
         # Wait for all inputs artifacts.
         await asyncio.gather(*self.inputs)
-        # Create a future if required and wait for it to complete.
-        if not self.future:
-            self.future = asyncio.create_task(self._execute())
-        await self.future
+
+        async with self.SEMAPHORE or util.noop_context():
+            # Figure out which outputs are stale.
+            stale_artifacts = self.stale_outputs
+            if not stale_artifacts:
+                LOGGER.info("\U0001f7e2 artifacts %s are up to date", self.outputs)
+                return
+
+            if self.DRY_RUN:
+                LOGGER.info("\U0001f7e1 artifacts %s are stale; dry run", stale_artifacts)
+                return
+
+            LOGGER.info("\U0001f7e1 artifacts %s are stale; running transform", stale_artifacts)
+
+            # If the transform is already in progress, just wait for it and exit.
+            if not self.future:
+                self.future = asyncio.Future()
+                try:
+                    await self.execute()
+
+                    # Update the composite digests.
+                    composite_digests = self.evaluate_composite_digests()
+                    LOGGER.info("\u2705 generated artifacts %s", self.outputs)
+                    self.COMPOSITE_DIGESTS.update(composite_digests)
+                    self.future.set_result(None)
+                except Exception as ex:
+                    LOGGER.error("\u274c failed to generate artifacts %s: %s", self.outputs, ex)
+                    self.future.set_exception(ex)
+
+            await self.future
 
     @property
     def stale_outputs(self) -> typing.Iterable["artifacts.Artifact"]:
@@ -104,40 +130,9 @@ class Transformation:
         return [output for output in self.outputs if composite_digests[output.name] is None or
                 composite_digests[output.name] != self.COMPOSITE_DIGESTS.get(output.name)]
 
-    async def _execute(self) -> None:
-        """
-        Private wrapper to determine whether the transformation needs to be executed and wrap it in
-        a semaphore to limit concurrency.
-        """
-        stale_artifacts = self.stale_outputs
-        if not stale_artifacts:
-            LOGGER.info("\U0001f7e2 artifacts %s are up to date", self.outputs)
-            return
-
-        if self.DRY_RUN:
-            LOGGER.info("\U0001f7e1 artifacts %s are stale; dry run", stale_artifacts)
-            return
-
-        LOGGER.info("\U0001f7e1 artifacts %s are stale; transformation scheduled", stale_artifacts)
-
-        try:
-            if self.SEMAPHORE is None:
-                await self.execute()
-            else:
-                async with self.SEMAPHORE:
-                    await self.execute()
-
-            # Update the composite digests.
-            composite_digests = self.evaluate_composite_digests()
-            LOGGER.info("\u2705 generated artifacts %s", self.outputs)
-            self.COMPOSITE_DIGESTS.update(composite_digests)
-        except Exception as ex:
-            LOGGER.error("\u274c failed to generate artifacts %s: %s", self.outputs, ex)
-            raise
-
     async def execute(self) -> None:
         """
-        Execute the transformation.
+        Execute the transform.
         """
         raise NotImplementedError
 
@@ -155,14 +150,14 @@ class Transformation:
     DRY_RUN: bool = False
 
 
-class _Sleep(Transformation):
+class _Sleep(Transform):
     """
     Sleeps for a given number of seconds and create any file artifact outputs. Mostly used for
     testing and debugging.
 
     Args:
         outputs: Artifacts to generate.
-        inputs: Artifacts consumed by the transformation.
+        inputs: Artifacts consumed by the transform.
         time: Number of seconds to sleep for.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
@@ -185,7 +180,7 @@ class _Sleep(Transformation):
         self.end = time.time()
 
 
-class Download(Transformation):
+class Download(Transform):
     """
     Download a file.
 
@@ -215,11 +210,11 @@ class Download(Transformation):
                     fp.write(await response.read())
 
 
-class Subprocess(Transformation):
+class Subprocess(Transform):
     r"""
     Execute a subprocess.
 
-    The transformation supports variable substitution using f-strings and Makefile syntax:
+    The transform supports variable substitution using f-strings and Makefile syntax:
 
     - :code:`$@` represents the first output.
     - :code:`$<` represents the first input.
@@ -231,13 +226,13 @@ class Subprocess(Transformation):
     - :code:`$!` represents the current python interpreter.
 
     Environment variables are inherited by default, but global environment variables for all
-    :class:`Subprocess` transformations can be specified in :attr:`ENV`, and specific environment
+    :class:`Subprocess` transforms can be specified in :attr:`ENV`, and specific environment
     variables can be specified using the :code:`env` argument. Environment variables that are
-    :code:`None` are removed from the environment of the transformation.
+    :code:`None` are removed from the environment of the transform.
 
     Args:
         outputs: Artifacts to generate.
-        inputs: Artifacts consumed by the transformation.
+        inputs: Artifacts consumed by the transform.
         cmd: Command to execute. Must be a single string if :code:`shell` is truthy and a sequence
             of strings otherwise.
         env: Mapping of environment variables.
@@ -253,7 +248,7 @@ class Subprocess(Transformation):
             :code:`shell == False` and :code:`cmd` is not a list of strings.
 
     Attributes:
-        ENV: Default mapping of environment variables for all :class:`Subprocess` transformations.
+        ENV: Default mapping of environment variables for all :class:`Subprocess` transforms.
 
     Example:
         >>> bb.Subprocess("copy.txt", "input.txt", ["cp", "$<", "$@"])
@@ -323,13 +318,13 @@ class Shell(Subprocess):
         super().__init__(outputs, inputs, cmd, env=env, shell=True, **kwargs)
 
 
-class Functional(Transformation):
+class Functional(Transform):
     """
     Apply a python function.
 
     Args:
         outputs: Artifacts to generate.
-        inputs: Artifacts consumed by the transformation.
+        inputs: Artifacts consumed by the transform.
         func: Function to execute.
         *args: Positional arguments passed to :code:`func`.
         *kwargs: Keyword arguments passed to :code:`func`.

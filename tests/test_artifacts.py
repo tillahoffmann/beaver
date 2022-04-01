@@ -1,6 +1,6 @@
 import asyncio
 from beaver_build import artifacts as ba
-from beaver_build import transformations as bt
+from beaver_build import transforms as bt
 import os
 import pytest
 
@@ -47,10 +47,10 @@ def test_raise_if_invalid_gather():
         asyncio.run(ba.gather_artifacts(None))
 
 
-def test_normalize_transformation_outputs():
-    transformation = bt.Transformation(["output1.txt", "output2.txt"], None)
-    assert ba.normalize_artifacts(transformation) == transformation.outputs
-    assert ba.normalize_artifacts([transformation]) == transformation.outputs
+def test_normalize_transform_outputs():
+    transform = bt.Transform(["output1.txt", "output2.txt"], None)
+    assert ba.normalize_artifacts(transform) == transform.outputs
+    assert ba.normalize_artifacts([transform]) == transform.outputs
 
 
 def test_group(tempdir):

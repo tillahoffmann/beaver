@@ -9,10 +9,10 @@ Command line
    :func: build_parser
    :prog: beaver
 
-Transformations
+Transforms
 ---------------
 
-.. automodule:: beaver_build.transformations
+.. automodule:: beaver_build.transforms
    :members:
 
 Artifacts

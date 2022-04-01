@@ -1,13 +1,12 @@
 import asyncio
 from beaver_build import artifacts as ba
-from beaver_build import transformations as bt
+from beaver_build import transforms as bt
 import os
 import pytest
 import time
 from unittest import mock
 
 
-@pytest.mark.timing
 def test_execution_time(tempdir):
     bt._Sleep("input.txt", [], sleep=.1)
     bt._Sleep("intermediate_0.txt", "input.txt", sleep=.2)
@@ -25,9 +24,9 @@ def test_execution_time(tempdir):
 
 def test_raise_if_multiple_parents():
     artifact = ba.Artifact("dummy")
-    bt.Transformation(artifact, [])
+    bt.Transform(artifact, [])
     with pytest.raises(RuntimeError):
-        bt.Transformation(artifact, [])
+        bt.Transform(artifact, [])
 
 
 def test_shell_command(tempdir):
@@ -120,7 +119,6 @@ def test_raise_if_shell_error():
         asyncio.run(output())
 
 
-@pytest.mark.timing
 @pytest.mark.parametrize("use_semaphore", [False, True])
 def test_concurrency_with_semaphore(use_semaphore: bool):
     outputs = [output for i in range(9) for output
@@ -174,22 +172,22 @@ def test_shell_environment_variables(ENV, env, tempdir):
 
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_dry_run(dry_run):
-    transformation = bt.Transformation("dummy.txt", None)
-    bt.Transformation.DRY_RUN = dry_run
+    transform = bt.Transform("dummy.txt", None)
+    bt.Transform.DRY_RUN = dry_run
 
     if dry_run:
-        asyncio.run(ba.gather_artifacts(transformation))
+        asyncio.run(ba.gather_artifacts(transform))
     else:
         with pytest.raises(NotImplementedError):
-            asyncio.run(ba.gather_artifacts(transformation))
+            asyncio.run(ba.gather_artifacts(transform))
 
 
-def test_cancel_long_running_transformation():
+def test_cancel_long_running_transform():
     async def target():
-        transformation = bt.Shell(ba.Artifact("long-running"), None,
-                                  "for x in `seq 60`; do sleep 1 && echo $x; done")
-        task = asyncio.create_task(ba.gather_artifacts(transformation))
-        bt.cancel_all_transformations()
+        transform = bt.Shell(ba.Artifact("long-running"), None,
+                             "for x in `seq 60`; do sleep 1 && echo $x; done")
+        task = asyncio.create_task(ba.gather_artifacts(transform))
+        bt.cancel_all_transforms()
         with pytest.raises(asyncio.CancelledError):
             await task
     asyncio.run(target())

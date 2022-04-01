@@ -32,3 +32,8 @@ class Crc32:
 
     def hexdigest(self) -> str:
         return self.digest().hex()
+
+
+@contextlib.asynccontextmanager
+async def noop_context(*args, **kwargs):
+    yield

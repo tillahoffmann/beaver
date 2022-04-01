@@ -16,13 +16,13 @@ def test_build(tempdir, caplog: pytest.LogCaptureFixture):
         cli.__main__(args)
     assert bb.Artifact.REGISTRY["output.txt"].digest == "60cdcd6d"
 
-    # Verify that two transformations were executed by inspecting the logs.
+    # Verify that two transforms were executed by inspecting the logs.
     assert "artifacts [File(pre/input1.txt), File(pre/input2.txt)] are stale" in caplog.text
     assert "generated artifacts [File(pre/input1.txt), File(pre/input2.txt)]" in caplog.text
     assert "artifacts [File(output.txt)] are stale" in caplog.text
     assert "generated artifacts [File(output.txt)]" in caplog.text
 
-    # Run again and verify that no transformations were executed.
+    # Run again and verify that no transforms were executed.
     bb.reset()
     caplog.clear()
     with caplog.at_level(logging.INFO):

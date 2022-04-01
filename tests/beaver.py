@@ -5,7 +5,7 @@ exists = bb.Artifact("exists")
 
 # Generate some arbitrary inputs.
 with bb.Group('pre'):
-    inputs = bb.transformations._Sleep(["input1.txt", "input2.txt"], None, sleep=0)
+    inputs = bb.transforms._Sleep(["input1.txt", "input2.txt"], None, sleep=0)
 
 # Concatenate the inputs.
 output = bb.Shell("output.txt", inputs, "cat $^ > $@")
