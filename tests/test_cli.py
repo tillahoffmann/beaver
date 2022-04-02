@@ -11,7 +11,7 @@ TEST_BEAVER_FILE = os.path.join(os.path.dirname(__file__), "beaver.py")
 
 
 def test_build(tempdir, caplog: pytest.LogCaptureFixture):
-    args = [f"--file={TEST_BEAVER_FILE}", "build", "output.txt"]
+    args = [f"--file={TEST_BEAVER_FILE}", "--log_level=debug", "build", "output.txt"]
     with caplog.at_level(logging.INFO):
         cli.__main__(args)
     assert bb.Artifact.REGISTRY["output.txt"].digest == "60cdcd6d"
@@ -25,8 +25,8 @@ def test_build(tempdir, caplog: pytest.LogCaptureFixture):
     # Run again and verify that no transforms were executed.
     bb.reset()
     caplog.clear()
-    with caplog.at_level(logging.INFO):
-        bb.cli.__main__(args)
+    with caplog.at_level(logging.DEBUG):
+        cli.__main__(args)
 
     assert "artifacts [File(pre/input1.txt), File(pre/input2.txt)] are up to date" \
         in caplog.text

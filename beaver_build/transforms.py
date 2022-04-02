@@ -93,10 +93,14 @@ class Transform:
         await asyncio.gather(*self.inputs)
 
         async with self.SEMAPHORE or util.noop_context():
+            if self.future:
+                await self.future
+                return
+
             # Figure out which outputs are stale.
             stale_artifacts = self.stale_outputs
             if not stale_artifacts:
-                LOGGER.info("\U0001f7e2 artifacts %s are up to date", self.outputs)
+                LOGGER.debug("\U0001f7e2 artifacts %s are up to date", self.outputs)
                 return
 
             if self.DRY_RUN:
@@ -105,20 +109,18 @@ class Transform:
 
             LOGGER.info("\U0001f7e1 artifacts %s are stale; running transform", stale_artifacts)
 
-            # If the transform is already in progress, just wait for it and exit.
-            if not self.future:
-                self.future = asyncio.Future()
-                try:
-                    await self.execute()
+            self.future = asyncio.Future()
+            try:
+                await self.execute()
 
-                    # Update the composite digests.
-                    composite_digests = self.evaluate_composite_digests()
-                    LOGGER.info("\u2705 generated artifacts %s", self.outputs)
-                    self.COMPOSITE_DIGESTS.update(composite_digests)
-                    self.future.set_result(None)
-                except Exception as ex:
-                    LOGGER.error("\u274c failed to generate artifacts %s: %s", self.outputs, ex)
-                    self.future.set_exception(ex)
+                # Update the composite digests.
+                composite_digests = self.evaluate_composite_digests()
+                LOGGER.info("\u2705 generated artifacts %s", self.outputs)
+                self.COMPOSITE_DIGESTS.update(composite_digests)
+                self.future.set_result(None)
+            except Exception as ex:
+                LOGGER.error("\u274c failed to generate artifacts %s: %s", self.outputs, ex)
+                self.future.set_exception(ex)
 
             await self.future
 
@@ -166,8 +168,13 @@ class _Sleep(Transform):
         self.sleep = sleep
         self.start = None
         self.end = None
+        self.num_calls = 0
 
     async def execute(self) -> None:
+        if self.num_calls:  # pragma: no cover
+            raise RuntimeError("this transformation has already been executed")
+        else:
+            self.num_calls += 1
         self.start = time.time()
         LOGGER.debug("running %s for %f seconds...", self, self.sleep)
         await asyncio.sleep(self.sleep)
