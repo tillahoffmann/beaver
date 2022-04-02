@@ -165,9 +165,10 @@ def __main__(args: typing.Iterable[str] = None) -> int:
 
     # Load the cache and execute the subcommand.
     load_cache(args.cache)
-    result = args.func(args)
-    save_cache(args.cache)
-    return result
+    try:
+        return args.func(args)
+    finally:
+        save_cache(args.cache)
 
 
 if __name__ == "__main__":  # pragma: no cover
