@@ -65,7 +65,6 @@ class Artifact(metaclass=ArtifactFactory):
             of the directed acyclic graph.
         digest: Concise summary of the artifact; :code:`None` if the artifact does not exist, cannot
             be summarized, or should always be generated using its :attr:`parent` transform.
-        is_stale: Whether the artifact is stale and needs to be generated.
     """
     def __init__(self, name: str, expected_digest: str = None) -> None:
         self.name = name
@@ -191,9 +190,6 @@ def group_artifacts(*names: str, squeeze=True) -> list[Group]:
         for name in names:
             groups.append(Group(name).__enter__())
         yield groups[0] if len(groups) == 1 and squeeze else groups
-    except Exception:
-        Group.STACK.clear()
-        raise
     finally:
         [group.__exit__() for group in reversed(groups)]
 
