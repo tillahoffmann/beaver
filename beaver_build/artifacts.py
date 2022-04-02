@@ -3,6 +3,7 @@ import contextlib
 import glob
 import logging
 import os
+import pathlib
 import re
 import shlex
 import typing
@@ -28,6 +29,8 @@ class ArtifactFactory(type):
         super(ArtifactFactory, self).__init__(name, bases, members)
 
     def __call__(self, name, *args, **kwargs):
+        if isinstance(name, pathlib.Path):
+            name = str(name)
         # Evaluate the fully qualified name in light of the current group stack.
         name = Group.evaluate_qualified_name(name)
         # Try to retrieve the instance from the registry.
@@ -290,7 +293,7 @@ def normalize_artifacts(
         artifacts = [artifacts]
     normalized = []
     for artifact in artifacts:
-        if isinstance(artifact, str):
+        if isinstance(artifact, (str, pathlib.Path)):
             normalized.append(File(artifact))
         elif isinstance(artifact, Artifact):
             normalized.append(artifact)

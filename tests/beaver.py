@@ -1,7 +1,8 @@
 import beaver_build as bb
+import pathlib
 
-# An artifact that "just exists" and isn't generated.
-exists = bb.Artifact("exists")
+# An artifact that "just exists" and isn't generated; we use pathlib do demonstrate that that works.
+exists = bb.Artifact(pathlib.Path("exists"))
 
 # Generate some arbitrary inputs.
 with bb.Group('pre'):
