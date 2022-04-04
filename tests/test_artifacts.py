@@ -33,7 +33,7 @@ def test_raise_if_duplicate_name_with_different_type():
 def test_raise_if_missing_input_file():
     input = ba.File("missing.txt")
     with pytest.raises(FileNotFoundError) as exinfo:
-        asyncio.run(input())
+        asyncio.run(ba.gather_artifacts(input))
     assert str(exinfo.value).startswith(f"{input} does not exist")
 
 

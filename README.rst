@@ -33,7 +33,7 @@ This seems like a convoluted way to write :code:`hello` to :code:`output.txt`. S
 Why should we care? Transforms can be chained by using the outputs of one as the inputs for another. Beaver ensures that all transforms are executed in the correct order and parallelizes steps where possible. These are of course the tasks of any build system, but Beaver's unique selling points are (see `Why not use ...?`_ for further details):
 
 - users do not need to learn a `domain-specific language <https://en.wikipedia.org/wiki/Domain-specific_language>`_ but use flexible python syntax to create and chain transforms.
-- new transforms can be implemented easily by inheriting from :class:`Transform <beaver_build.transforms.Transform>` and implementing the :meth:`execute <beaver_build.transforms.Transform.execute>` method.
+- new transforms can be implemented easily by inheriting from :class:`Transform <beaver_build.transforms.Transform>` and implementing the :meth:`apply <beaver_build.transforms.Transform.apply>` method.
 - scheduling of operations is delegated to python's :mod:`asyncio` package which both minimizes the potential for bugs (compared with a custom implementation) and simplifies parallelization.
 - defining artifacts and transforms as python objects allows for extensive introspection, such as visualization of the induced `directed acyclic <https://en.wikipedia.org/wiki/Directed_acyclic_graph>`_ `bipartite graph <https://en.wikipedia.org/wiki/Bipartite_graph>`_.
 

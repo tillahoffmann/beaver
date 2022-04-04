@@ -31,7 +31,7 @@ def test_raise_if_multiple_parents():
 
 def test_shell_command(tempdir):
     output, = bt.Shell("directory/output.txt", None, "echo hello > $@")
-    asyncio.run(output())
+    asyncio.run(ba.gather_artifacts(output))
     assert output.digest == "363a3020"
 
 
@@ -52,7 +52,7 @@ def test_download(tempdir):
     with mock.patch("aiohttp.ClientSession.get", return_value=mock_response):
         output = ba.File("directory/output.txt", "0d4a1185")
         bt.Download(output, "invalid-url")
-        asyncio.run(output())
+        asyncio.run(ba.gather_artifacts(output))
         mock_response.read.assert_called_once()
 
 
@@ -62,7 +62,7 @@ def test_raise_if_download_wrong_file(tempdir):
         output = ba.File("directory/output.txt", "0d4a1185")
         bt.Download(output, "invalid-url")
         with pytest.raises(ValueError) as exinfo:
-            asyncio.run(output())
+            asyncio.run(ba.gather_artifacts(output))
         assert str(exinfo.value).startswith("expected digest")
         mock_response.read.assert_called_once()
 
@@ -72,7 +72,7 @@ def test_download_exists(tempdir):
         fp.write(b"hello world")
     output = ba.File("output.txt", "0d4a1185")
     bt.Download(output, "invalid-url")
-    asyncio.run(output())
+    asyncio.run(ba.gather_artifacts(output))
 
 
 def test_raise_if_missing_output_file(tempdir):
@@ -81,14 +81,14 @@ def test_raise_if_missing_output_file(tempdir):
 
     output, = bt.Functional("output.txt", None, target)
     with pytest.raises(FileNotFoundError) as exinfo:
-        asyncio.run(output())
+        asyncio.run(ba.gather_artifacts(output))
     assert str(exinfo.value).startswith(f"{output.parent} did not generate")
 
 
 def test_input_none_digest():
     target = mock.AsyncMock(return_value=None)
     output, = bt.Functional(ba.Artifact("output"), ba.Artifact("input"), target)
-    asyncio.run(output())
+    asyncio.run(ba.gather_artifacts(output))
     target.assert_called_once()
 
 
@@ -116,7 +116,7 @@ def test_raise_if_invalid_subprocess_cmd(shell):
 def test_raise_if_shell_error():
     with pytest.raises(RuntimeError):
         output, = bt.Shell("output.txt", None, "not-a-command")
-        asyncio.run(output())
+        asyncio.run(ba.gather_artifacts(output))
 
 
 @pytest.mark.parametrize("use_semaphore", [False, True])
