@@ -76,8 +76,8 @@ def reset_composite_digests(args: argparse.Namespace) -> int:
     for artifact in match_artifacts(args):
         if artifact.name not in ArtifactFactory.REGISTRY:  # pragma: no cover
             raise RuntimeError(f"artifact `{artifact.name}` is not in the registry")
-        elif not Transform.COMPOSITE_DIGESTS.pop(artifact.name, None):
-            LOGGER.info("artifact `%s` did not have a composite digest", artifact.name)
+        elif not artifact.metadata.pop("last_composite_digest", None):
+            LOGGER.info("artifact `%s` did not have a composite digest", artifact)
         else:
             num_reset += 1
     LOGGER.info("reset %d composite digests", num_reset)
@@ -93,7 +93,9 @@ def match_artifacts(args: argparse.Namespace) -> typing.Iterable[Artifact]:
         value for key, value in ArtifactFactory.REGISTRY.items()
         if any(re.match(pattern, key) for pattern in args.patterns)
     ]
-    if not artifacts:
+    if artifacts:
+        LOGGER.debug("patterns matched %d artifacts", len(artifacts))
+    else:
         LOGGER.warning("patterns did not match any artifacts; use `--all` to select all artifacts")
     return artifacts
 
@@ -150,7 +152,11 @@ def __main__(args: typing.Iterable[str] = None) -> int:
     root_logger = logging.getLogger()
     root_logger.setLevel(args.log_level)
     handler = logging.StreamHandler()
-    handler.setFormatter(Formatter("\U0001f9ab %(_prefix)s%(levelname)s%(_suffix)s: %(message)s"))
+    if args.log_level == 'DEBUG':
+        fmt = "%(asctime)s %(levelname)s: %(message)s"
+    else:
+        fmt = "\U0001f9ab %(_prefix)s%(levelname)s%(_suffix)s: %(message)s"
+    handler.setFormatter(Formatter(fmt))
     root_logger.addHandler(handler)
 
     # Load the artifact and transform configuration.
