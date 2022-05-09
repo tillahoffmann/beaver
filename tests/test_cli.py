@@ -8,6 +8,7 @@ import subprocess
 
 
 TEST_BEAVER_FILE = os.path.join(os.path.dirname(__file__), "beaver.py")
+TEST_BUGGY_BEAVER_FILE = os.path.join(os.path.dirname(__file__), "buggy_beaver.py")
 
 
 def test_build(tempdir, caplog: pytest.LogCaptureFixture):
@@ -89,6 +90,20 @@ def test_reset(tempdir, caplog: pytest.LogCaptureFixture, pattern: str):
 def test_no_artifact(tempdir, caplog: pytest.LogCaptureFixture):
     cli.__main__([f"--file={TEST_BEAVER_FILE}", "list"])
     assert "patterns did not match any artifacts" in caplog.text
+
+
+def test_buggy_shell(tempdir, capsys: pytest.CaptureFixture):
+    arg = f"--file={TEST_BUGGY_BEAVER_FILE}"
+    with pytest.raises(RuntimeError):
+        cli.__main__([arg, "build", "output.txt"])
+
+    # Verify that there is no composite digest for the failed output.
+    assert "last_composite_digest" not in bb.ArtifactFactory.REGISTRY["output.txt"].metadata
+
+    # Ensure that the file is still stale.
+    bb.reset()
+    cli.__main__([arg, "list", "--all", "--stale", "--raw"])
+    assert capsys.readouterr().out.strip() == "output.txt"
 
 
 def test_entrypoint():
