@@ -32,7 +32,8 @@ class ArtifactFactory(type):
         if isinstance(name, pathlib.Path):
             name = str(name)
         # Evaluate the fully qualified name in light of the current group stack.
-        name = Group.evaluate_qualified_name(name)
+        if not kwargs.get("ignore_groups"):
+            name = Group.evaluate_qualified_name(name)
         # Try to retrieve the instance from the registry.
         if instance := self.REGISTRY.get(name):
             if (cls := instance.__class__) is not self:
@@ -42,8 +43,9 @@ class ArtifactFactory(type):
         # Create a new instance, register it with the current group if any, and add it to the
         # registry.
         instance = super(ArtifactFactory, self).__call__(name, *args, **kwargs)
-        Group.append(instance)
         self.REGISTRY[name] = instance
+        if not kwargs.get("ignore_groups"):
+            Group.append(instance)
         return instance
 
 
@@ -55,6 +57,7 @@ class Artifact(util.Once, metaclass=ArtifactFactory):
         name: Unique name of the artifact.
         expected_digest: Digest expected when the artifact is available.
         metadata: Metadata which may persist across runs.
+        ignore_groups: Ignore any groups and create a root-level artifact.
 
     Raises:
         ValueError: If the given :code:`name` is already in use by another artifact.
@@ -68,7 +71,8 @@ class Artifact(util.Once, metaclass=ArtifactFactory):
             be summarized, or should always be generated using its :attr:`parent` transform.
         metadata: Metadata which may persist across runs.
     """
-    def __init__(self, name: str, expected_digest: str = None, metadata: dict = None) -> None:
+    def __init__(self, name: str, expected_digest: str = None, metadata: dict = None,
+                 ignore_groups: bool = False) -> None:
         super().__init__()
         self.name = name
         self.expected_digest = expected_digest
@@ -119,12 +123,13 @@ class Group(Artifact):
         name: Name of the group. The group name is added as a prefix for all artifacts created
             within the context manager of the group.
         metadata: Metadata which may persist across runs.
+        ignore_groups: Ignore any groups and create a root-level artifact.
 
     Attributes:
         members: Members of the group.
     """
-    def __init__(self, name: str, metadata: dict = None) -> None:
-        super().__init__(name, expected_digest=None, metadata=metadata)
+    def __init__(self, name: str, metadata: dict = None, ignore_groups: bool = False) -> None:
+        super().__init__(name, expected_digest=None, metadata=metadata, ignore_groups=ignore_groups)
         self.members = []
 
     def __enter__(self) -> "Group":
@@ -203,9 +208,11 @@ class File(Artifact):
         name: Unique name of the artifact.
         expected_digest: Digest expected when the artifact is available.
         metadata: Metadata which may persist across runs.
+        ignore_groups: Ignore any groups and create a root-level artifact.
     """
-    def __init__(self, name: str, expected_digest: str = None, metadata: dict = None) -> None:
-        super().__init__(name, expected_digest, metadata)
+    def __init__(self, name: str, expected_digest: str = None, metadata: dict = None,
+                 ignore_groups: bool = False) -> None:
+        super().__init__(name, expected_digest, metadata, ignore_groups)
         if re.search(r"\s", self.name):
             LOGGER.warning("whitespace in `%s` is a recipe for disaster; expect the unexpected",
                            self.name)
@@ -259,6 +266,13 @@ class File(Artifact):
         """
         with open(self.name) as fp:
             return fp.read()
+
+    @property
+    def exists(self) -> bool:
+        """
+        Return whether the file exists.
+        """
+        return os.path.isfile(self.name)
 
     @classmethod
     def glob(self, pattern: str) -> typing.Iterable["File"]:

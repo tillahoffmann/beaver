@@ -66,6 +66,22 @@ def test_group(tempdir):
     assert os.path.isfile(artifact.name)
 
 
+def test_ignore_groups(tempdir):
+    with ba.group_artifacts("outer") as outer, ba.group_artifacts("inner") as inner:
+        artifact = ba.File("artifact.txt", ignore_groups=True)
+        bt.Shell(artifact, None, "echo hello > $@")
+
+    assert outer.name == "outer"
+    assert inner.name == "outer/inner"
+    assert artifact.name == "artifact.txt"
+
+    assert not os.path.isfile(artifact.name)
+    asyncio.run(ba.gather_artifacts(outer))
+    assert not artifact.exists
+    asyncio.run(ba.gather_artifacts(artifact))
+    assert artifact.exists
+
+
 def test_group_reuse():
     with ba.group_artifacts("group") as group:
         pass
