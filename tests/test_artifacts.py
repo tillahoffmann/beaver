@@ -16,7 +16,7 @@ def test_raise_if_implicit_non_file_artifact():
         ba.normalize_artifacts("non-file")
 
 
-def test_file_glob(tempdir):
+def test_file_glob():
     for filename in ["file1.txt", "file2.txt", "other.txt"]:
         with open(filename, "w") as fp:
             fp.write(filename)
@@ -53,7 +53,7 @@ def test_normalize_transform_outputs():
     assert ba.normalize_artifacts([transform]) == transform.outputs
 
 
-def test_group(tempdir):
+def test_group():
     with ba.group_artifacts("outer") as outer, ba.group_artifacts("inner") as inner:
         artifact, = bt.Shell("artifact.txt", None, "echo hello > $@")
 
@@ -66,7 +66,7 @@ def test_group(tempdir):
     assert os.path.isfile(artifact.name)
 
 
-def test_ignore_groups(tempdir):
+def test_ignore_groups():
     with ba.group_artifacts("outer") as outer, ba.group_artifacts("inner") as inner:
         artifact = ba.File("artifact.txt", ignore_groups=True)
         bt.Shell(artifact, None, "echo hello > $@")

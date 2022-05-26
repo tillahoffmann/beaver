@@ -7,7 +7,7 @@ import time
 from unittest import mock
 
 
-def test_execution_time(tempdir):
+def test_execution_time():
     bt._Sleep("input.txt", [], sleep=.1)
     bt._Sleep("intermediate_0.txt", "input.txt", sleep=.2)
     [bt._Sleep(f"intermediate_1_{i}.txt", "intermediate_0.txt",
@@ -29,7 +29,7 @@ def test_raise_if_multiple_parents():
         bt.Transform(artifact, [])
 
 
-def test_shell_command(tempdir):
+def test_shell_command():
     output, = bt.Shell("directory/output.txt", None, "echo hello > $@")
     asyncio.run(ba.gather_artifacts(output))
     assert output.digest == "363a3020"
@@ -47,7 +47,7 @@ class AsyncMockResponse:
         pass
 
 
-def test_download(tempdir):
+def test_download():
     mock_response = AsyncMockResponse(b"hello world")
     with mock.patch("aiohttp.ClientSession.get", return_value=mock_response):
         output = ba.File("directory/output.txt", "0d4a1185")
@@ -56,7 +56,7 @@ def test_download(tempdir):
         mock_response.read.assert_called_once()
 
 
-def test_raise_if_download_wrong_file(tempdir):
+def test_raise_if_download_wrong_file():
     mock_response = AsyncMockResponse(b"bye world")
     with mock.patch("aiohttp.ClientSession.get", return_value=mock_response):
         output = ba.File("directory/output.txt", "0d4a1185")
@@ -67,7 +67,7 @@ def test_raise_if_download_wrong_file(tempdir):
         mock_response.read.assert_called_once()
 
 
-def test_download_exists(tempdir):
+def test_download_exists():
     with open("output.txt", "wb") as fp:
         fp.write(b"hello world")
     output = ba.File("output.txt", "0d4a1185")
@@ -75,7 +75,7 @@ def test_download_exists(tempdir):
     asyncio.run(ba.gather_artifacts(output))
 
 
-def test_raise_if_missing_output_file(tempdir):
+def test_raise_if_missing_output_file():
     async def target(*args):
         pass
 
@@ -92,7 +92,7 @@ def test_input_none_digest():
     target.assert_called_once()
 
 
-def test_caching(tempdir):
+def test_caching():
     calls = []
 
     async def target(outputs, *args):
@@ -135,7 +135,7 @@ def test_concurrency_with_semaphore(use_semaphore: bool):
     ("transform $^ $@", "transform input1.txt input2.txt output1.txt"),
     ("transform {inputs[1]} {outputs[0].name}", "transform input2.txt output1.txt")
 ])
-def test_shell_substitution(cmd, expected, tempdir):
+def test_shell_substitution(cmd: str, expected: str):
     # Create dummy files.
     for filename in ["input1.txt", "input2.txt", "output1.txt", "output2.txt"]:
         with open(filename, "w") as fp:
@@ -159,7 +159,7 @@ def test_shell_substitution(cmd, expected, tempdir):
     ({"BEAVER_TEST_VARIABLE": "FOO"}, {"BEAVER_TEST_VARIABLE": None}),
     ({}, {}),
 ])
-def test_shell_environment_variables(ENV, env, tempdir):
+def test_shell_environment_variables(ENV: dict, env: dict):
     bt.Shell.ENV = ENV
     os.environ["BEAVER_TEST_VARIABLE"] = "BAZ"
     output, = bt.Shell("output.txt", None, "echo $BEAVER_TEST_VARIABLE > $@", env=env)
@@ -171,7 +171,7 @@ def test_shell_environment_variables(ENV, env, tempdir):
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_dry_run(dry_run):
+def test_dry_run(dry_run: bool):
     transform = bt.Transform("dummy.txt", None)
     bt.Transform.DRY_RUN = dry_run
 
@@ -193,13 +193,13 @@ def test_cancel_long_running_transform():
     asyncio.run(target())
 
 
-def test_subprocess(tempdir):
+def test_subprocess():
     dummy, = bt.Subprocess("dummy.txt", None, ["sh", "-c", "echo hello > dummy.txt"])
     asyncio.run(ba.gather_artifacts(dummy))
     assert dummy.digest == "363a3020"
 
 
-def test_subprocess_env(tempdir):
+def test_subprocess_env():
     dummy, = bt.Subprocess("dummy.txt", None, ["sh", "-c", "echo $MYVAR > dummy.txt"],
                            env={"MYVAR": 0.0})
     asyncio.run(ba.gather_artifacts(dummy))
