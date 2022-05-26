@@ -99,7 +99,8 @@ class Artifact(util.Once, metaclass=ArtifactFactory):
     @property
     def is_stale(self) -> bool:
         if self._parent:
-            return self in self._parent.stale_outputs
+            return self in self._parent.stale_outputs \
+                or any(artifact.is_stale for artifact in self._parent.inputs)
         return False
 
     def __repr__(self):
