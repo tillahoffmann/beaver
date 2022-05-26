@@ -69,6 +69,29 @@ def test_list(stale: bool, raw: bool, run: bool, pattern: str, tempdir: str,
     assert stdout
 
 
+def test_list_with_intermediate_stale_output(tempdir: str, caplog: pytest.LogCaptureFixture,
+                                             capsys: pytest.CaptureFixture):
+    # Build first, then ensure there are no stale artifacts.
+    args = [f"--file={TEST_BEAVER_FILE}"]
+    cli.__main__(args + ["build", "output.txt"])
+    caplog.clear()
+    bb.reset()
+
+    cli.__main__(args + ["list", "--all", "--stale", "--raw"])
+    assert not capsys.readouterr()[0].strip()
+    bb.reset()
+
+    # Reset an intermediate artifact and demand that it and all dependents are stale.
+    cli.__main__(args + ["reset", "pre/input1.txt"])
+    assert "reset 1 composite digest" in caplog.text
+    caplog.clear()
+    bb.reset()
+
+    cli.__main__(args + ["list", "--all", "--stale", "--raw"])
+    stdout, _ = capsys.readouterr()
+    assert {line.strip() for line in stdout.splitlines()} == {"pre", "pre/input1.txt", "output.txt"}
+
+
 @pytest.mark.parametrize("pattern", ["--all", "out"])
 def test_reset(tempdir, caplog: pytest.LogCaptureFixture, pattern: str):
     args = [f"--file={TEST_BEAVER_FILE}"]
