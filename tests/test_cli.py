@@ -11,7 +11,7 @@ TEST_BEAVER_FILE = os.path.join(os.path.dirname(__file__), "beaver.py")
 TEST_BUGGY_BEAVER_FILE = os.path.join(os.path.dirname(__file__), "buggy_beaver.py")
 
 
-def test_build(tempdir, caplog: pytest.LogCaptureFixture):
+def test_build(caplog: pytest.LogCaptureFixture):
     args = [f"--file={TEST_BEAVER_FILE}", "--log_level=debug", "build", "output.txt"]
     with caplog.at_level(logging.INFO):
         cli.__main__(args)
@@ -34,7 +34,7 @@ def test_build(tempdir, caplog: pytest.LogCaptureFixture):
     assert "artifacts [File(output.txt)] are up to date" in caplog.text
 
 
-def test_missing_cache_file(tempdir, caplog: pytest.LogCaptureFixture):
+def test_missing_cache_file(caplog: pytest.LogCaptureFixture):
     assert cli.__main__(["--cache=missing-file", "build", "some-target"])
     assert "cannot be loaded from" in caplog.text
 
@@ -43,8 +43,7 @@ def test_missing_cache_file(tempdir, caplog: pytest.LogCaptureFixture):
 @pytest.mark.parametrize("raw", [False, True])
 @pytest.mark.parametrize("run", [False, True])
 @pytest.mark.parametrize("pattern", ["--all", "out"])
-def test_list(stale: bool, raw: bool, run: bool, pattern: str, tempdir: str,
-              capsys: pytest.CaptureFixture):
+def test_list(stale: bool, raw: bool, run: bool, pattern: str, capsys: pytest.CaptureFixture):
     args = [f"--file={TEST_BEAVER_FILE}"]
     if run:
         cli.__main__(args + ["build", "pre/input1.txt"])
@@ -69,7 +68,7 @@ def test_list(stale: bool, raw: bool, run: bool, pattern: str, tempdir: str,
     assert stdout
 
 
-def test_list_with_intermediate_stale_output(tempdir: str, caplog: pytest.LogCaptureFixture,
+def test_list_with_intermediate_stale_output(caplog: pytest.LogCaptureFixture,
                                              capsys: pytest.CaptureFixture):
     # Build first, then ensure there are no stale artifacts.
     args = [f"--file={TEST_BEAVER_FILE}"]
@@ -93,7 +92,7 @@ def test_list_with_intermediate_stale_output(tempdir: str, caplog: pytest.LogCap
 
 
 @pytest.mark.parametrize("pattern", ["--all", "out"])
-def test_reset(tempdir, caplog: pytest.LogCaptureFixture, pattern: str):
+def test_reset(caplog: pytest.LogCaptureFixture, pattern: str):
     args = [f"--file={TEST_BEAVER_FILE}"]
 
     # Ensure that there aren't any composite digests to start with.
@@ -110,12 +109,12 @@ def test_reset(tempdir, caplog: pytest.LogCaptureFixture, pattern: str):
     assert f"reset {3 if pattern == '--all' else 1} composite digests" in caplog.text
 
 
-def test_no_artifact(tempdir, caplog: pytest.LogCaptureFixture):
+def test_no_artifact(caplog: pytest.LogCaptureFixture):
     cli.__main__([f"--file={TEST_BEAVER_FILE}", "list"])
     assert "patterns did not match any artifacts" in caplog.text
 
 
-def test_buggy_shell(tempdir, capsys: pytest.CaptureFixture):
+def test_buggy_shell(capsys: pytest.CaptureFixture):
     arg = f"--file={TEST_BUGGY_BEAVER_FILE}"
     with pytest.raises(RuntimeError):
         cli.__main__([arg, "build", "output.txt"])

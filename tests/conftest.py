@@ -13,7 +13,7 @@ def clean_slate():
     beaver_build.cancel_all_transforms()
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def tempdir():
     with tempfile.TemporaryDirectory() as tmp, beaver_build.working_directory(tmp):
         yield tmp
