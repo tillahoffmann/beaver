@@ -75,7 +75,7 @@ def reset_composite_digests(context: Context, args: argparse.Namespace) -> int:
     for artifact in context.match_artifacts(args.patterns, args.all):
         if artifact.name not in context.artifacts:  # pragma: no cover
             raise RuntimeError(f"artifact `{artifact.name}` is not in the registry")
-        elif not artifact.metadata.pop("last_composite_digest", None):
+        elif not context.artifact_metadata.get(artifact, {}).pop("last_composite_digest", None):
             LOGGER.info("artifact `%s` did not have a composite digest", artifact)
         else:
             num_reset += 1

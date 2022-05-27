@@ -106,7 +106,8 @@ class Transform(util.Once):
         # Reset the composite digests of all outputs to ensure they get regenerated if the transform
         # fails.
         for output in self.outputs:
-            output.metadata.pop("last_composite_digest", None)
+            metadata = context.get_current_context().artifact_metadata.get(output, {})
+            metadata.pop("last_composite_digest", None)
 
         async with self.concurrency_context():
             try:
@@ -118,7 +119,9 @@ class Transform(util.Once):
                 # Update the composite digests.
                 composite_digests = evaluate_composite_digests(self.outputs, self.inputs)
                 for artifact, composite_digest in composite_digests.items():
-                    artifact.metadata.update({
+                    metadata = \
+                        context.get_current_context().artifact_metadata.setdefault(artifact, {})
+                    metadata.update({
                         "last_composite_digest": composite_digest,
                         "last_duration": duration,
                     })
@@ -133,9 +136,11 @@ class Transform(util.Once):
         # Get the outputs whose composite digests are `None` or different from the library of
         # composite digests.
         composite_digests = evaluate_composite_digests(self.outputs, self.inputs)
+        current_context = context.get_current_context()
         return [
             output for output, composite_digest in composite_digests.items() if composite_digest is
-            None or composite_digest != output.metadata.get("last_composite_digest")
+            None or composite_digest !=
+            current_context.artifact_metadata.get(output, {}).get("last_composite_digest")
         ]
 
     async def apply(self) -> None:

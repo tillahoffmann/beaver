@@ -55,7 +55,6 @@ class Artifact(util.Once, metaclass=ArtifactFactory):
     Args:
         name: Unique name of the artifact.
         expected_digest: Digest expected when the artifact is available.
-        metadata: Metadata which may persist across runs.
         ignore_groups: Ignore any groups and create a root-level artifact.
 
     Raises:
@@ -68,16 +67,13 @@ class Artifact(util.Once, metaclass=ArtifactFactory):
             of the directed acyclic graph.
         digest: Concise summary of the artifact; :code:`None` if the artifact does not exist, cannot
             be summarized, or should always be generated using its :attr:`parent` transform.
-        metadata: Metadata which may persist across runs.
     """
-    def __init__(self, name: str, expected_digest: str = None, metadata: dict = None,
-                 ignore_groups: bool = False) -> None:
+    def __init__(self, name: str, expected_digest: str = None, ignore_groups: bool = False) -> None:
         super().__init__()
         self.name = name
         self.expected_digest = expected_digest
         self._parent = None
         self.children = []
-        self.metadata = metadata or {}
 
     children: typing.Iterable[transforms.Transform]
 
@@ -110,7 +106,8 @@ class Artifact(util.Once, metaclass=ArtifactFactory):
             await self.parent
         if self.expected_digest and self.digest != self.expected_digest:
             # Pop the composite digest to ensure this artifact is regenerated.
-            self.metadata.pop("last_composite_digest", None)
+            metadata = context.get_current_context().artifact_metadata.get(self, {})
+            metadata.pop("last_composite_digest", None)
             raise ValueError(f"expected digest `{self.expected_digest}` but got "
                              f"`{self.digest}` for `{self}`")
 
@@ -122,14 +119,13 @@ class Group(Artifact):
     Args:
         name: Name of the group. The group name is added as a prefix for all artifacts created
             within the context manager of the group.
-        metadata: Metadata which may persist across runs.
         ignore_groups: Ignore any groups and create a root-level artifact.
 
     Attributes:
         members: Members of the group.
     """
-    def __init__(self, name: str, metadata: dict = None, ignore_groups: bool = False) -> None:
-        super().__init__(name, expected_digest=None, metadata=metadata, ignore_groups=ignore_groups)
+    def __init__(self, name: str, ignore_groups: bool = False) -> None:
+        super().__init__(name, expected_digest=None, ignore_groups=ignore_groups)
         self.members = []
 
     @classmethod
@@ -209,12 +205,10 @@ class File(Artifact):
     Args:
         name: Unique name of the artifact.
         expected_digest: Digest expected when the artifact is available.
-        metadata: Metadata which may persist across runs.
         ignore_groups: Ignore any groups and create a root-level artifact.
     """
-    def __init__(self, name: str, expected_digest: str = None, metadata: dict = None,
-                 ignore_groups: bool = False) -> None:
-        super().__init__(name, expected_digest, metadata, ignore_groups)
+    def __init__(self, name: str, expected_digest: str = None, ignore_groups: bool = False) -> None:
+        super().__init__(name, expected_digest, ignore_groups)
         if re.search(r"\s", self.name):
             LOGGER.warning("whitespace in `%s` is a recipe for disaster; expect the unexpected",
                            self.name)
@@ -242,9 +236,10 @@ class File(Artifact):
     def digest(self):
         try:
             # Return the digest if the file hasn't been modified since we last computed the digest.
+            metadata: dict = context.get_current_context().artifact_metadata.setdefault(self, {})
             last_modified = os.stat(self.name).st_mtime
-            cache_modified = self.metadata.get("last_modified")
-            cache_digest = self.metadata.get("last_digest")
+            cache_modified = metadata.get("last_modified")
+            cache_digest = metadata.get("last_digest")
             if cache_digest and cache_modified and cache_modified >= last_modified:
                 LOGGER.debug("returned cached digest for `%s`", self)
                 return cache_digest
@@ -255,8 +250,8 @@ class File(Artifact):
                 while (chunk := fp.read(4096)):
                     algorithm.update(chunk)
             digest = algorithm.hexdigest()
-            self.metadata["last_modified"] = last_modified
-            self.metadata["last_digest"] = digest
+            metadata["last_modified"] = last_modified
+            metadata["last_digest"] = digest
             LOGGER.debug("evaluated digest for `%s`", self)
             return digest
         except FileNotFoundError:

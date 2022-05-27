@@ -18,6 +18,7 @@ class Context:
 
     def __init__(self):
         self.artifacts = {}
+        self.artifact_metadata = {}
         self.properties = {}
 
     def __enter__(self) -> "Context":
@@ -31,12 +32,14 @@ class Context:
             raise RuntimeError("another context is active")  # pragma: no cover
         Context.CURRENT_CONTEXT = None
 
-    def get_properties(self, key) -> dict:
+    def get_properties(self, cls) -> dict:
         """
-        Get a modifiable dictionary of properties for the given key, e.g. a particular
+        Get a modifiable dictionary of properties for the given class, e.g. a particular
         :cls:`Transform`.
         """
-        return self.properties.setdefault(key, {})
+        if not isinstance(cls, type):
+            raise ValueError(f"expected a type but got `{cls}`")  # pragma: no cover
+        return self.properties.setdefault(cls, {})
 
     def match_artifacts(self, patterns: typing.Iterable[str], all: bool = False) \
             -> typing.Iterable["artifacts.Artifact"]:
@@ -66,10 +69,8 @@ class Context:
         """
         cache = {
             "version": self.CACHE_VERSION,
-            "artifact_metadata": {
-                name: artifact.metadata for name, artifact in self.artifacts.items()
-                if artifact.metadata
-            },
+            "artifact_metadata": {artifact.name: value for artifact, value in
+                                  self.artifact_metadata.items()},
         }
         with open(filename, "w") as fp:
             json.dump(cache, fp, indent=4)
@@ -79,15 +80,16 @@ class Context:
         Load all cached information.
         """
         with open(filename) as fp:
-            cache = json.load(fp)
+            cache: dict = json.load(fp)
 
         if cache["version"] != self.CACHE_VERSION:  # pragma: no cover
             raise ValueError(f"expected cache version `{self.CACHE_VERSION}` but got "
                              f"`{cache['version']}`")
 
-        for name, metadata in cache.get("artifact_metadata", {}).items():
-            if artifact := self.artifacts.get(name):
-                artifact.metadata.update(metadata)
+        self.artifact_metadata = {
+            artifact: value for name, value in cache.get("artifact_metadata", {}).items() if
+            (artifact := self.artifacts.get(name)) is not None
+        }
 
 
 DEFAULT_CONTEXT = Context()

@@ -17,7 +17,8 @@ def test_build(caplog: pytest.LogCaptureFixture):
     with caplog.at_level(logging.INFO):
         context = bb.Context()
         cli.__main__(args, context)
-    assert context.artifacts["output.txt"].digest == "60cdcd6d"
+    with context:
+        assert context.artifacts["output.txt"].digest == "60cdcd6d"
 
     # Verify that two transforms were executed by inspecting the logs.
     assert "artifacts [File(pre/input1.txt), File(pre/input2.txt)] are stale" in caplog.text
@@ -122,7 +123,8 @@ def test_buggy_shell(capsys: pytest.CaptureFixture):
         cli.__main__([arg, "build", "output.txt"], context)
 
     # Verify that there is no composite digest for the failed output.
-    assert "last_composite_digest" not in context.artifacts["output.txt"].metadata
+    artifact = context.artifacts["output.txt"]
+    assert "last_composite_digest" not in context.artifact_metadata[artifact]
 
     # Ensure that the file is still stale.
     cli.__main__([arg, "list", "--all", "--stale", "--raw"])
