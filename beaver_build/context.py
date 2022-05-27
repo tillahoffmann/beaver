@@ -99,6 +99,12 @@ STRICT_CONTEXT_MANAGEMENT = int(os.environ.get("BEAVER_STRICT_CONTEXT_MANAGEMENT
 def get_current_context() -> Context:
     """
     Get the current context.
+
+    Returns:
+        context: The current context or a :code:`DEFAULT_CONTEXT` if no context is active.
+
+    Raises:
+        RuntimeError: If no context is active and :code:`STRICT_CONTEXT_MANAGEMENT` is enforced.
     """
     if Context.CURRENT_CONTEXT is None:
         if STRICT_CONTEXT_MANAGEMENT:
