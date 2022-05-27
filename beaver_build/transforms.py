@@ -16,6 +16,38 @@ from . import util
 LOGGER = logging.getLogger(__name__)
 
 
+def evaluate_composite_digests(
+        outputs: typing.Iterable["artifacts.Artifact"],
+        inputs: typing.Iterable["artifacts.Artifact"]) -> dict["artifacts.Artifact", bytes]:
+    """
+    Evaluate composite digests for all :code:`outputs`.
+
+    A composite digest is defined as the digest of the digests of inputs and the digest of the
+    output, i.e. it is a joint, concise summary of both inputs and outputs. A composite digest is
+    :code:`None` if the corresponding output digest is :code:`None` or any input digests are
+    :code:`None`.
+
+    Args:
+        inputs: Sequence of input artifacts.
+        outputs: Sequence of output artifacts.
+
+    Returns:
+        digests: Mapping from outputs to composite digests.
+    """
+    # Evaluate input digests and abort if any of them are missing.
+    input_digest = util.Crc32()
+    for input in inputs:
+        if input.digest is None:
+            return {output: None for output in outputs}
+        input_digest.update(bytes.fromhex(input.digest))
+
+    # Construct composite digests for the outputs.
+    return {
+        output: util.Crc32(bytes.fromhex(output.digest), int(input_digest)).hexdigest() if
+        output.digest is not None else None for output in outputs
+    }
+
+
 def cancel_all_transforms() -> None:
     """
     Cancel all running transforms.
@@ -55,37 +87,6 @@ class Transform(util.Once):
         for output in self.outputs:
             yield output
 
-    def evaluate_composite_digests(self) -> dict["artifacts.Artifact", bytes]:
-        """
-        Evaluate composite digests for all :code:`outputs` of the transform.
-
-        A composite digest is defined as the digest of the digests of inputs and the digest of the
-        output, i.e. it is a joint, concise summary of both inputs and outputs. If any composite
-        digest differs from the digest in :attr:`.artifacts.Artifact.metadata` or is :code:`None`,
-        the transform needs to be executed. A composite digest is :code:`None` if the corresponding
-        output digest is :code:`None` or any input digests are :code:`None`.
-
-        Returns:
-            digests: Mapping from outputs to composite digests.
-        """
-        # Initialise empty digests for the outputs.
-        composite_digests = {output: None for output in self.outputs}
-
-        # Evaluate input digests and abort if any of them are missing.
-        input_digest = util.Crc32()
-        for input in self.inputs:
-            if input.digest is None:
-                return composite_digests
-            input_digest.update(bytes.fromhex(input.digest))
-
-        # Construct composite digests for the outputs.
-        for output in self.outputs:
-            if output.digest is None:
-                continue
-            digest = util.Crc32(bytes.fromhex(output.digest), int(input_digest)).hexdigest()
-            composite_digests[output] = digest
-        return composite_digests
-
     async def execute(self) -> None:
         # Wait for all inputs artifacts.
         await asyncio.gather(*self.inputs)
@@ -115,7 +116,8 @@ class Transform(util.Once):
                 duration = time.time() - start
 
                 # Update the composite digests.
-                for artifact, composite_digest in self.evaluate_composite_digests().items():
+                composite_digests = evaluate_composite_digests(self.outputs, self.inputs)
+                for artifact, composite_digest in composite_digests.items():
                     artifact.metadata.update({
                         "last_composite_digest": composite_digest,
                         "last_duration": duration,
@@ -130,7 +132,7 @@ class Transform(util.Once):
     def stale_outputs(self) -> typing.Iterable["artifacts.Artifact"]:
         # Get the outputs whose composite digests are `None` or different from the library of
         # composite digests.
-        composite_digests = self.evaluate_composite_digests()
+        composite_digests = evaluate_composite_digests(self.outputs, self.inputs)
         return [
             output for output, composite_digest in composite_digests.items() if composite_digest is
             None or composite_digest != output.metadata.get("last_composite_digest")
