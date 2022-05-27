@@ -9,10 +9,43 @@ import sys
 import time
 import typing
 from . import artifacts
+from . import context
 from . import util
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def evaluate_composite_digests(
+        outputs: typing.Iterable["artifacts.Artifact"],
+        inputs: typing.Iterable["artifacts.Artifact"]) -> dict["artifacts.Artifact", bytes]:
+    """
+    Evaluate composite digests for all :code:`outputs`.
+
+    A composite digest is defined as the digest of the digests of inputs and the digest of the
+    output, i.e. it is a joint, concise summary of both inputs and outputs. A composite digest is
+    :code:`None` if the corresponding output digest is :code:`None` or any input digests are
+    :code:`None`.
+
+    Args:
+        inputs: Sequence of input artifacts.
+        outputs: Sequence of output artifacts.
+
+    Returns:
+        digests: Mapping from outputs to composite digests.
+    """
+    # Evaluate input digests and abort if any of them are missing.
+    input_digest = util.Crc32()
+    for input in inputs:
+        if input.digest is None:
+            return {output: None for output in outputs}
+        input_digest.update(bytes.fromhex(input.digest))
+
+    # Construct composite digests for the outputs.
+    return {
+        output: util.Crc32(bytes.fromhex(output.digest), int(input_digest)).hexdigest() if
+        output.digest is not None else None for output in outputs
+    }
 
 
 def cancel_all_transforms() -> None:
@@ -39,7 +72,6 @@ class Transform(util.Once):
 
     Attributes:
         stale_outputs: Sequence of outputs that are stale and need to be updated.
-        DRY_RUN: Whether to show transforms without executing them.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
                  inputs: typing.Iterable["artifacts.Artifact"]) -> None:
@@ -55,37 +87,6 @@ class Transform(util.Once):
         for output in self.outputs:
             yield output
 
-    def evaluate_composite_digests(self) -> dict["artifacts.Artifact", bytes]:
-        """
-        Evaluate composite digests for all :code:`outputs` of the transform.
-
-        A composite digest is defined as the digest of the digests of inputs and the digest of the
-        output, i.e. it is a joint, concise summary of both inputs and outputs. If any composite
-        digest differs from the digest in :attr:`.artifacts.Artifact.metadata` or is :code:`None`,
-        the transform needs to be executed. A composite digest is :code:`None` if the corresponding
-        output digest is :code:`None` or any input digests are :code:`None`.
-
-        Returns:
-            digests: Mapping from outputs to composite digests.
-        """
-        # Initialise empty digests for the outputs.
-        composite_digests = {output: None for output in self.outputs}
-
-        # Evaluate input digests and abort if any of them are missing.
-        input_digest = util.Crc32()
-        for input in self.inputs:
-            if input.digest is None:
-                return composite_digests
-            input_digest.update(bytes.fromhex(input.digest))
-
-        # Construct composite digests for the outputs.
-        for output in self.outputs:
-            if output.digest is None:
-                continue
-            digest = util.Crc32(bytes.fromhex(output.digest), int(input_digest)).hexdigest()
-            composite_digests[output] = digest
-        return composite_digests
-
     async def execute(self) -> None:
         # Wait for all inputs artifacts.
         await asyncio.gather(*self.inputs)
@@ -96,7 +97,7 @@ class Transform(util.Once):
             LOGGER.debug("\U0001f7e2 artifacts %s are up to date", self.outputs)
             return
 
-        if self.DRY_RUN:
+        if self.get_dry_run():
             LOGGER.info("\U0001f7e1 artifacts %s are stale; dry run", stale_artifacts)
             return
 
@@ -105,7 +106,8 @@ class Transform(util.Once):
         # Reset the composite digests of all outputs to ensure they get regenerated if the transform
         # fails.
         for output in self.outputs:
-            output.metadata.pop("last_composite_digest", None)
+            metadata = context.get_current_context().artifact_metadata.get(output, {})
+            metadata.pop("last_composite_digest", None)
 
         async with self.concurrency_context():
             try:
@@ -115,8 +117,11 @@ class Transform(util.Once):
                 duration = time.time() - start
 
                 # Update the composite digests.
-                for artifact, composite_digest in self.evaluate_composite_digests().items():
-                    artifact.metadata.update({
+                composite_digests = evaluate_composite_digests(self.outputs, self.inputs)
+                for artifact, composite_digest in composite_digests.items():
+                    metadata = \
+                        context.get_current_context().artifact_metadata.setdefault(artifact, {})
+                    metadata.update({
                         "last_composite_digest": composite_digest,
                         "last_duration": duration,
                     })
@@ -130,10 +135,12 @@ class Transform(util.Once):
     def stale_outputs(self) -> typing.Iterable["artifacts.Artifact"]:
         # Get the outputs whose composite digests are `None` or different from the library of
         # composite digests.
-        composite_digests = self.evaluate_composite_digests()
+        composite_digests = evaluate_composite_digests(self.outputs, self.inputs)
+        current_context = context.get_current_context()
         return [
             output for output, composite_digest in composite_digests.items() if composite_digest is
-            None or composite_digest != output.metadata.get("last_composite_digest")
+            None or composite_digest !=
+            current_context.artifact_metadata.get(output, {}).get("last_composite_digest")
         ]
 
     async def apply(self) -> None:
@@ -148,23 +155,37 @@ class Transform(util.Once):
         return f"{self.__class__.__name__}([{inputs}] -> [{outputs}])"
 
     @classmethod
+    def get_properties(cls):
+        return context.get_current_context().get_properties(cls)
+
+    @classmethod
     @contextlib.contextmanager
     def limit_concurrency(cls, num_concurrent):
-        if cls._SEMAPHORE:  # pragma: no cover
+        # We need to explicitly select the `Transform` key to ensure all transforms use the same
+        # semaphore.
+        properties = context.get_current_context().get_properties(Transform)
+        if (semaphore := properties.get("semaphore")):  # pragma: no cover
             raise RuntimeError("semaphore is already set")
         if num_concurrent:
-            cls._SEMAPHORE = asyncio.Semaphore(num_concurrent)
-        yield cls._SEMAPHORE
-        cls._SEMAPHORE = None
+            semaphore = properties["semaphore"] = asyncio.Semaphore(num_concurrent)
+        yield semaphore
+        properties.pop("semaphore", None)
 
     @classmethod
     def concurrency_context(cls):
-        if cls._SEMAPHORE is None:
+        properties = context.get_current_context().get_properties(Transform)
+        if (semaphore := properties.get("semaphore")):
+            return semaphore
+        else:
             return util.noop_context()
-        return cls._SEMAPHORE
 
-    _SEMAPHORE: typing.Optional[asyncio.Semaphore] = None
-    DRY_RUN: bool = False
+    @classmethod
+    def get_dry_run(cls) -> bool:
+        return cls.get_properties().get("dry_run", False)
+
+    @classmethod
+    def set_dry_run(cls, dry_run: bool):
+        cls.get_properties()["dry_run"] = dry_run
 
 
 class _Sleep(Transform):
@@ -248,9 +269,10 @@ class Subprocess(Transform):
     - :code:`$!` represents the current python interpreter.
 
     Environment variables are inherited by default, but global environment variables for all
-    :class:`Subprocess` transforms can be specified in :attr:`ENV`, and specific environment
-    variables can be specified using the :code:`env` argument. Environment variables that are
-    :code:`None` are removed from the environment of the transform.
+    :class:`Subprocess` transforms can be specified by :meth:`set_global_env` or modifying
+    :meth:`get_global_env`, and specific environment variables can be specified using the
+    :code:`env` argument. Environment variables that are :code:`None` are removed from the
+    environment of the transform.
 
     Args:
         outputs: Artifacts to generate.
@@ -313,7 +335,7 @@ class Subprocess(Transform):
         LOGGER.info("\u2699\ufe0f execute %s command `%s`", "shell" if self.shell else "subprocess",
                     pretty_cmd)
         # Call the process.
-        env = os.environ | self.ENV | self.env
+        env = os.environ | self.get_global_env() | self.env
         env = {key: str(value) for key, value in env.items() if value is not None}
         if self.shell:
             process = await asyncio.subprocess.create_subprocess_shell(cmd, env=env, **self.kwargs)
@@ -323,7 +345,19 @@ class Subprocess(Transform):
         if status:
             raise RuntimeError(f"{self} failed with status code {status}")
 
-    ENV: dict[str, str] = {}
+    @classmethod
+    def get_global_env(cls) -> dict:
+        """
+        Get the global environment variables used by all :class:`Subprocess` transforms.
+        """
+        return cls.get_properties().get("ENV", {})
+
+    @classmethod
+    def set_global_env(cls, value: dict) -> None:
+        """
+        Set the global environment variables used by all :class:`Subprocess` transforms.
+        """
+        cls.get_properties()["ENV"] = value
 
 
 class Shell(Subprocess):

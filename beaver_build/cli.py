@@ -2,10 +2,9 @@ import argparse
 import asyncio
 import importlib
 import logging
-import re
 import typing
-from . import load_cache, save_cache
-from .artifacts import Artifact, ArtifactFactory, gather_artifacts, Group
+from .artifacts import gather_artifacts, Group
+from .context import Context
 from .transforms import cancel_all_transforms, Transform
 
 
@@ -34,26 +33,26 @@ class Formatter(logging.Formatter):
         return super().format(record)
 
 
-def build_artifacts(args: argparse.Namespace) -> int:
+def build_artifacts(context: Context, args: argparse.Namespace) -> int:
     """
     Build artifacts.
     """
-    Transform.DRY_RUN = args.dry_run
+    Transform.set_dry_run(args.dry_run)
 
     try:
         # Get the targets we want to build and wait for them to complete.
-        artifacts = match_artifacts(args)
+        artifacts = context.match_artifacts(args.patterns, args.all)
         asyncio.run(gather_artifacts(*artifacts, num_concurrent=args.num_concurrent))
     finally:
         cancel_all_transforms()
 
 
-def list_artifacts(args: argparse.Namespace) -> int:
+def list_artifacts(context: Context, args: argparse.Namespace) -> int:
     """
     List artifacts.
     """
     lines = []
-    for artifact in match_artifacts(args):
+    for artifact in context.match_artifacts(args.patterns, args.all):
         if args.stale and not artifact.is_stale:
             continue
         if args.raw:
@@ -68,36 +67,19 @@ def list_artifacts(args: argparse.Namespace) -> int:
     print('\n'.join(lines))
 
 
-def reset_composite_digests(args: argparse.Namespace) -> int:
+def reset_composite_digests(context: Context, args: argparse.Namespace) -> int:
     """
     Reset the composite digest of artifacts
     """
     num_reset = 0
-    for artifact in match_artifacts(args):
-        if artifact.name not in ArtifactFactory.REGISTRY:  # pragma: no cover
+    for artifact in context.match_artifacts(args.patterns, args.all):
+        if artifact.name not in context.artifacts:  # pragma: no cover
             raise RuntimeError(f"artifact `{artifact.name}` is not in the registry")
-        elif not artifact.metadata.pop("last_composite_digest", None):
+        elif not context.artifact_metadata.get(artifact, {}).pop("last_composite_digest", None):
             LOGGER.info("artifact `%s` did not have a composite digest", artifact)
         else:
             num_reset += 1
     LOGGER.info("reset %d composite digests", num_reset)
-
-
-def match_artifacts(args: argparse.Namespace) -> typing.Iterable[Artifact]:
-    """
-    Obtain all artifacts that match any of the patterns.
-    """
-    if args.all:
-        return ArtifactFactory.REGISTRY.values()
-    artifacts = [
-        value for key, value in ArtifactFactory.REGISTRY.items()
-        if any(re.match(pattern, key) for pattern in args.patterns)
-    ]
-    if artifacts:
-        LOGGER.debug("patterns matched %d artifacts", len(artifacts))
-    else:
-        LOGGER.warning("patterns did not match any artifacts; use `--all` to select all artifacts")
-    return artifacts
 
 
 def add_pattern_arguments(parser: argparse.ArgumentParser) -> None:
@@ -144,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def __main__(args: typing.Iterable[str] = None) -> int:
+def __main__(args: typing.Iterable[str] = None, context: Context = None) -> int:
     parser = build_parser()
     args = parser.parse_args(args)
 
@@ -159,22 +141,27 @@ def __main__(args: typing.Iterable[str] = None) -> int:
     handler.setFormatter(Formatter(fmt))
     root_logger.addHandler(handler)
 
-    # Load the artifact and transform configuration.
-    try:
-        spec = importlib.util.spec_from_file_location("config", args.file)
-        config = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(config)
-        LOGGER.debug("loaded %d artifacts from `%s`", len(ArtifactFactory.REGISTRY), args.file)
-    except FileNotFoundError:
-        LOGGER.error("beaver configuration cannot be loaded from %s", args.file)
-        return 1
+    context = context or Context()
+    with context:
+        # Load the artifact and transform configuration.
+        try:
+            spec = importlib.util.spec_from_file_location("config", args.file)
+            config = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(config)
+            LOGGER.debug("loaded %d artifacts from `%s`", len(context.artifacts), args.file)
+        except FileNotFoundError:
+            LOGGER.error("beaver configuration cannot be loaded from %s", args.file)
+            return 1
 
-    # Load the cache and execute the subcommand.
-    load_cache(args.cache)
-    try:
-        return args.func(args)
-    finally:
-        save_cache(args.cache)
+        # Load the cache and execute the subcommand.
+        try:
+            context.load(args.cache)
+        except FileNotFoundError:
+            LOGGER.debug("could not load cache from %s because the file does not exist", args.cache)
+        try:
+            return args.func(context, args)
+        finally:
+            context.dump(args.cache)
 
 
 if __name__ == "__main__":  # pragma: no cover

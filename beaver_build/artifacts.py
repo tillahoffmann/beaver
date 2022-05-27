@@ -7,6 +7,7 @@ import pathlib
 import re
 import shlex
 import typing
+from . import context
 from . import transforms
 from . import util
 
@@ -22,9 +23,6 @@ class ArtifactFactory(type):
         REGISTRY: Mapping of artifact names to :class:`Artifact` instances. The registry is used to
             keep track of all artifacts and ensure artifact names are unique.
     """
-    # Declare using an old-school type hint because Sphinx struggles with circular references.
-    REGISTRY = {}  # type: dict[str, Artifact]
-
     def __init__(self, name, bases, members):
         super(ArtifactFactory, self).__init__(name, bases, members)
 
@@ -35,7 +33,8 @@ class ArtifactFactory(type):
         if not kwargs.get("ignore_groups"):
             name = Group.evaluate_qualified_name(name)
         # Try to retrieve the instance from the registry.
-        if instance := self.REGISTRY.get(name):
+        current_context = context.get_current_context()
+        if instance := current_context.artifacts.get(name):
             if (cls := instance.__class__) is not self:
                 raise ValueError(f"cannot create instance of {self} because artifact `{name}` with "
                                  f"type {cls} already exists")
@@ -43,7 +42,7 @@ class ArtifactFactory(type):
         # Create a new instance, register it with the current group if any, and add it to the
         # registry.
         instance = super(ArtifactFactory, self).__call__(name, *args, **kwargs)
-        self.REGISTRY[name] = instance
+        current_context.artifacts[name] = instance
         if not kwargs.get("ignore_groups"):
             Group.append(instance)
         return instance
@@ -56,7 +55,6 @@ class Artifact(util.Once, metaclass=ArtifactFactory):
     Args:
         name: Unique name of the artifact.
         expected_digest: Digest expected when the artifact is available.
-        metadata: Metadata which may persist across runs.
         ignore_groups: Ignore any groups and create a root-level artifact.
 
     Raises:
@@ -69,16 +67,13 @@ class Artifact(util.Once, metaclass=ArtifactFactory):
             of the directed acyclic graph.
         digest: Concise summary of the artifact; :code:`None` if the artifact does not exist, cannot
             be summarized, or should always be generated using its :attr:`parent` transform.
-        metadata: Metadata which may persist across runs.
     """
-    def __init__(self, name: str, expected_digest: str = None, metadata: dict = None,
-                 ignore_groups: bool = False) -> None:
+    def __init__(self, name: str, expected_digest: str = None, ignore_groups: bool = False) -> None:
         super().__init__()
         self.name = name
         self.expected_digest = expected_digest
         self._parent = None
         self.children = []
-        self.metadata = metadata or {}
 
     children: typing.Iterable[transforms.Transform]
 
@@ -111,7 +106,8 @@ class Artifact(util.Once, metaclass=ArtifactFactory):
             await self.parent
         if self.expected_digest and self.digest != self.expected_digest:
             # Pop the composite digest to ensure this artifact is regenerated.
-            self.metadata.pop("last_composite_digest", None)
+            metadata = context.get_current_context().artifact_metadata.get(self, {})
+            metadata.pop("last_composite_digest", None)
             raise ValueError(f"expected digest `{self.expected_digest}` but got "
                              f"`{self.digest}` for `{self}`")
 
@@ -123,24 +119,27 @@ class Group(Artifact):
     Args:
         name: Name of the group. The group name is added as a prefix for all artifacts created
             within the context manager of the group.
-        metadata: Metadata which may persist across runs.
         ignore_groups: Ignore any groups and create a root-level artifact.
 
     Attributes:
         members: Members of the group.
     """
-    def __init__(self, name: str, metadata: dict = None, ignore_groups: bool = False) -> None:
-        super().__init__(name, expected_digest=None, metadata=metadata, ignore_groups=ignore_groups)
+    def __init__(self, name: str, ignore_groups: bool = False) -> None:
+        super().__init__(name, expected_digest=None, ignore_groups=ignore_groups)
         self.members = []
 
+    @classmethod
+    def _get_stack(cls) -> list:
+        return context.get_current_context().get_properties(cls).setdefault("STACK", [])
+
     def __enter__(self) -> "Group":
-        if self in self.STACK:  # pragma: no cover
+        if self in (stack := self._get_stack()):  # pragma: no cover
             raise RuntimeError(f"{self} is already in the stack")
-        self.STACK.append(self)
+        stack.append(self)
         return self
 
     def __exit__(self, *_):
-        if (other := self.STACK.pop()) is not self:  # pragma: no cover
+        if (other := self._get_stack().pop()) is not self:  # pragma: no cover
             raise RuntimeError(f"expected the last element to be {self} but got {other}")
 
     async def execute(self):
@@ -149,8 +148,6 @@ class Group(Artifact):
     @property
     def is_stale(self) -> bool:
         return any(member.is_stale for member in self.members)
-
-    STACK: list["Group"] = []
 
     @classmethod
     def evaluate_qualified_name(cls, name: str) -> str:
@@ -163,9 +160,9 @@ class Group(Artifact):
         Returns:
             name: Qualified name.
         """
-        if not cls.STACK:
+        if not (stack := cls._get_stack()):
             return name
-        return os.path.join(cls.STACK[-1].name, name)
+        return os.path.join(stack[-1].name, name)
 
     @classmethod
     def append(cls, artifact: Artifact) -> None:
@@ -175,9 +172,9 @@ class Group(Artifact):
         Args:
             artifact: Artifact to append to the current group.
         """
-        if not cls.STACK:
+        if not (stack := cls._get_stack()):
             return
-        cls.STACK[-1].members.append(artifact)
+        stack[-1].members.append(artifact)
 
 
 @contextlib.contextmanager
@@ -208,19 +205,17 @@ class File(Artifact):
     Args:
         name: Unique name of the artifact.
         expected_digest: Digest expected when the artifact is available.
-        metadata: Metadata which may persist across runs.
         ignore_groups: Ignore any groups and create a root-level artifact.
     """
-    def __init__(self, name: str, expected_digest: str = None, metadata: dict = None,
-                 ignore_groups: bool = False) -> None:
-        super().__init__(name, expected_digest, metadata, ignore_groups)
+    def __init__(self, name: str, expected_digest: str = None, ignore_groups: bool = False) -> None:
+        super().__init__(name, expected_digest, ignore_groups)
         if re.search(r"\s", self.name):
             LOGGER.warning("whitespace in `%s` is a recipe for disaster; expect the unexpected",
                            self.name)
 
     async def execute(self):
         # Omit directory creation and existence checks during dry run.
-        if transforms.Transform.DRY_RUN:
+        if transforms.Transform.get_dry_run():
             await super().execute()
             return
 
@@ -241,9 +236,10 @@ class File(Artifact):
     def digest(self):
         try:
             # Return the digest if the file hasn't been modified since we last computed the digest.
+            metadata: dict = context.get_current_context().artifact_metadata.setdefault(self, {})
             last_modified = os.stat(self.name).st_mtime
-            cache_modified = self.metadata.get("last_modified")
-            cache_digest = self.metadata.get("last_digest")
+            cache_modified = metadata.get("last_modified")
+            cache_digest = metadata.get("last_digest")
             if cache_digest and cache_modified and cache_modified >= last_modified:
                 LOGGER.debug("returned cached digest for `%s`", self)
                 return cache_digest
@@ -254,8 +250,8 @@ class File(Artifact):
                 while (chunk := fp.read(4096)):
                     algorithm.update(chunk)
             digest = algorithm.hexdigest()
-            self.metadata["last_modified"] = last_modified
-            self.metadata["last_digest"] = digest
+            metadata["last_modified"] = last_modified
+            metadata["last_digest"] = digest
             LOGGER.debug("evaluated digest for `%s`", self)
             return digest
         except FileNotFoundError:
