@@ -148,30 +148,37 @@ class Transform(util.Once):
         return f"{self.__class__.__name__}([{inputs}] -> [{outputs}])"
 
     @classmethod
+    def get_properties(cls):
+        return context.get_current_context().get_properties(cls)
+
+    @classmethod
     @contextlib.contextmanager
     def limit_concurrency(cls, num_concurrent):
-        if cls._SEMAPHORE:  # pragma: no cover
+        # We need to explicitly select the `Transform` key to ensure all transforms use the same
+        # semaphore.
+        properties = context.get_current_context().get_properties(Transform)
+        if (semaphore := properties.get("semaphore")):  # pragma: no cover
             raise RuntimeError("semaphore is already set")
         if num_concurrent:
-            cls._SEMAPHORE = asyncio.Semaphore(num_concurrent)
-        yield cls._SEMAPHORE
-        cls._SEMAPHORE = None
+            semaphore = properties["semaphore"] = asyncio.Semaphore(num_concurrent)
+        yield semaphore
+        properties.pop("semaphore", None)
 
     @classmethod
     def concurrency_context(cls):
-        if cls._SEMAPHORE is None:
+        properties = context.get_current_context().get_properties(Transform)
+        if (semaphore := properties.get("semaphore")):
+            return semaphore
+        else:
             return util.noop_context()
-        return cls._SEMAPHORE
-
-    _SEMAPHORE: typing.Optional[asyncio.Semaphore] = None
 
     @classmethod
     def get_dry_run(cls) -> bool:
-        return context.get_current_context().get_properties(cls).get("dry_run", False)
+        return cls.get_properties().get("dry_run", False)
 
     @classmethod
     def set_dry_run(cls, dry_run: bool):
-        context.get_current_context().get_properties(cls)["dry_run"] = dry_run
+        cls.get_properties()["dry_run"] = dry_run
 
 
 class _Sleep(Transform):
@@ -334,16 +341,16 @@ class Subprocess(Transform):
     @classmethod
     def get_global_env(cls) -> dict:
         """
-        Get the global environment variables used by all :cls:`Subprocess` transforms.
+        Get the global environment variables used by all :class:`Subprocess` transforms.
         """
-        return context.get_current_context().get_properties(cls).get("ENV", {})
+        return cls.get_properties().get("ENV", {})
 
     @classmethod
     def set_global_env(cls, value: dict) -> None:
         """
-        Set the global environment variables used by all :cls:`Subprocess` transforms.
+        Set the global environment variables used by all :class:`Subprocess` transforms.
         """
-        context.get_current_context().get_properties(cls)["ENV"] = value
+        cls.get_properties()["ENV"] = value
 
 
 class Shell(Subprocess):

@@ -10,7 +10,6 @@ bb.context.STRICT_CONTEXT_MANAGEMENT = True
 
 @pytest.fixture(autouse=True)
 def clean_slate():
-    bb.reset()
     bb.cancel_all_transforms()
 
 

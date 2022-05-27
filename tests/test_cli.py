@@ -26,7 +26,6 @@ def test_build(caplog: pytest.LogCaptureFixture):
     assert "generated artifacts [File(output.txt)]" in caplog.text
 
     # Run again and verify that no transforms were executed.
-    bb.reset()
     caplog.clear()
     with caplog.at_level(logging.DEBUG):
         cli.__main__(args)
@@ -51,7 +50,6 @@ def test_list(stale: bool, raw: bool, run: bool, pattern: str, capsys: pytest.Ca
     args = [f"--file={TEST_BEAVER_FILE}"]
     if run:
         cli.__main__(args + ["build", "pre/input1.txt"])
-        bb.reset()
     args.append("list")
     if stale:
         args.append("--stale")
@@ -79,17 +77,14 @@ def test_list_with_intermediate_stale_output(caplog: pytest.LogCaptureFixture,
     args = [f"--file={TEST_BEAVER_FILE}"]
     cli.__main__(args + ["build", "output.txt"])
     caplog.clear()
-    bb.reset()
 
     cli.__main__(args + ["list", "--all", "--stale", "--raw"])
     assert not capsys.readouterr()[0].strip()
-    bb.reset()
 
     # Reset an intermediate artifact and demand that it and all dependents are stale.
     cli.__main__(args + ["reset", "pre/input1.txt"])
     assert "reset 1 composite digest" in caplog.text
     caplog.clear()
-    bb.reset()
 
     cli.__main__(args + ["list", "--all", "--stale", "--raw"])
     stdout, _ = capsys.readouterr()
@@ -104,11 +99,9 @@ def test_reset(caplog: pytest.LogCaptureFixture, pattern: str):
     # Ensure that there aren't any composite digests to start with.
     cli.__main__(args + ["reset", pattern])
     assert "artifact `output.txt` did not have a composite digest" in caplog.text
-    bb.reset()
 
     # Build everything and then check that the reset did something.
     cli.__main__(args + ["build", "--all"])
-    bb.reset()
     caplog.clear()
 
     cli.__main__(args + ["reset", pattern])
@@ -132,7 +125,6 @@ def test_buggy_shell(capsys: pytest.CaptureFixture):
     assert "last_composite_digest" not in context.artifacts["output.txt"].metadata
 
     # Ensure that the file is still stale.
-    bb.reset()
     cli.__main__([arg, "list", "--all", "--stale", "--raw"])
     assert capsys.readouterr().out.strip() == "output.txt"
 
