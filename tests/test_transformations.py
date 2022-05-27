@@ -160,7 +160,7 @@ def test_shell_substitution(cmd: str, expected: str):
     ({}, {}),
 ])
 def test_shell_environment_variables(ENV: dict, env: dict):
-    bt.Shell.ENV = ENV
+    bt.Shell.set_global_env(ENV)
     os.environ["BEAVER_TEST_VARIABLE"] = "BAZ"
     output, = bt.Shell("output.txt", None, "echo $BEAVER_TEST_VARIABLE > $@", env=env)
     asyncio.run(ba.gather_artifacts(output))
@@ -173,7 +173,7 @@ def test_shell_environment_variables(ENV: dict, env: dict):
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_dry_run(dry_run: bool):
     transform = bt.Transform("dummy.txt", None)
-    bt.Transform.DRY_RUN = dry_run
+    bt.Transform.set_dry_run(dry_run)
 
     if dry_run:
         asyncio.run(ba.gather_artifacts(transform))

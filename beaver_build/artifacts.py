@@ -7,6 +7,7 @@ import pathlib
 import re
 import shlex
 import typing
+from . import context
 from . import transforms
 from . import util
 
@@ -22,9 +23,6 @@ class ArtifactFactory(type):
         REGISTRY: Mapping of artifact names to :class:`Artifact` instances. The registry is used to
             keep track of all artifacts and ensure artifact names are unique.
     """
-    # Declare using an old-school type hint because Sphinx struggles with circular references.
-    REGISTRY = {}  # type: dict[str, Artifact]
-
     def __init__(self, name, bases, members):
         super(ArtifactFactory, self).__init__(name, bases, members)
 
@@ -35,7 +33,8 @@ class ArtifactFactory(type):
         if not kwargs.get("ignore_groups"):
             name = Group.evaluate_qualified_name(name)
         # Try to retrieve the instance from the registry.
-        if instance := self.REGISTRY.get(name):
+        current_context = context.get_current_context()
+        if instance := current_context.artifacts.get(name):
             if (cls := instance.__class__) is not self:
                 raise ValueError(f"cannot create instance of {self} because artifact `{name}` with "
                                  f"type {cls} already exists")
@@ -43,7 +42,7 @@ class ArtifactFactory(type):
         # Create a new instance, register it with the current group if any, and add it to the
         # registry.
         instance = super(ArtifactFactory, self).__call__(name, *args, **kwargs)
-        self.REGISTRY[name] = instance
+        current_context.artifacts[name] = instance
         if not kwargs.get("ignore_groups"):
             Group.append(instance)
         return instance
@@ -133,14 +132,18 @@ class Group(Artifact):
         super().__init__(name, expected_digest=None, metadata=metadata, ignore_groups=ignore_groups)
         self.members = []
 
+    @classmethod
+    def _get_stack(cls) -> list:
+        return context.get_current_context().get_properties(cls).setdefault("STACK", [])
+
     def __enter__(self) -> "Group":
-        if self in self.STACK:  # pragma: no cover
+        if self in (stack := self._get_stack()):  # pragma: no cover
             raise RuntimeError(f"{self} is already in the stack")
-        self.STACK.append(self)
+        stack.append(self)
         return self
 
     def __exit__(self, *_):
-        if (other := self.STACK.pop()) is not self:  # pragma: no cover
+        if (other := self._get_stack().pop()) is not self:  # pragma: no cover
             raise RuntimeError(f"expected the last element to be {self} but got {other}")
 
     async def execute(self):
@@ -149,8 +152,6 @@ class Group(Artifact):
     @property
     def is_stale(self) -> bool:
         return any(member.is_stale for member in self.members)
-
-    STACK: list["Group"] = []
 
     @classmethod
     def evaluate_qualified_name(cls, name: str) -> str:
@@ -163,9 +164,9 @@ class Group(Artifact):
         Returns:
             name: Qualified name.
         """
-        if not cls.STACK:
+        if not (stack := cls._get_stack()):
             return name
-        return os.path.join(cls.STACK[-1].name, name)
+        return os.path.join(stack[-1].name, name)
 
     @classmethod
     def append(cls, artifact: Artifact) -> None:
@@ -175,9 +176,9 @@ class Group(Artifact):
         Args:
             artifact: Artifact to append to the current group.
         """
-        if not cls.STACK:
+        if not (stack := cls._get_stack()):
             return
-        cls.STACK[-1].members.append(artifact)
+        stack[-1].members.append(artifact)
 
 
 @contextlib.contextmanager
@@ -220,7 +221,7 @@ class File(Artifact):
 
     async def execute(self):
         # Omit directory creation and existence checks during dry run.
-        if transforms.Transform.DRY_RUN:
+        if transforms.Transform.get_dry_run():
             await super().execute()
             return
 

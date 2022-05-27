@@ -9,6 +9,7 @@ import sys
 import time
 import typing
 from . import artifacts
+from . import context
 from . import util
 
 
@@ -39,7 +40,6 @@ class Transform(util.Once):
 
     Attributes:
         stale_outputs: Sequence of outputs that are stale and need to be updated.
-        DRY_RUN: Whether to show transforms without executing them.
     """
     def __init__(self, outputs: typing.Iterable["artifacts.Artifact"],
                  inputs: typing.Iterable["artifacts.Artifact"]) -> None:
@@ -96,7 +96,7 @@ class Transform(util.Once):
             LOGGER.debug("\U0001f7e2 artifacts %s are up to date", self.outputs)
             return
 
-        if self.DRY_RUN:
+        if self.get_dry_run():
             LOGGER.info("\U0001f7e1 artifacts %s are stale; dry run", stale_artifacts)
             return
 
@@ -164,7 +164,14 @@ class Transform(util.Once):
         return cls._SEMAPHORE
 
     _SEMAPHORE: typing.Optional[asyncio.Semaphore] = None
-    DRY_RUN: bool = False
+
+    @classmethod
+    def get_dry_run(cls) -> bool:
+        return context.get_current_context().get_properties(cls).get("dry_run", False)
+
+    @classmethod
+    def set_dry_run(cls, dry_run: bool):
+        context.get_current_context().get_properties(cls)["dry_run"] = dry_run
 
 
 class _Sleep(Transform):
@@ -248,9 +255,10 @@ class Subprocess(Transform):
     - :code:`$!` represents the current python interpreter.
 
     Environment variables are inherited by default, but global environment variables for all
-    :class:`Subprocess` transforms can be specified in :attr:`ENV`, and specific environment
-    variables can be specified using the :code:`env` argument. Environment variables that are
-    :code:`None` are removed from the environment of the transform.
+    :class:`Subprocess` transforms can be specified by :meth:`set_global_env` or modifying
+    :meth:`get_global_env`, and specific environment variables can be specified using the
+    :code:`env` argument. Environment variables that are :code:`None` are removed from the
+    environment of the transform.
 
     Args:
         outputs: Artifacts to generate.
@@ -313,7 +321,7 @@ class Subprocess(Transform):
         LOGGER.info("\u2699\ufe0f execute %s command `%s`", "shell" if self.shell else "subprocess",
                     pretty_cmd)
         # Call the process.
-        env = os.environ | self.ENV | self.env
+        env = os.environ | self.get_global_env() | self.env
         env = {key: str(value) for key, value in env.items() if value is not None}
         if self.shell:
             process = await asyncio.subprocess.create_subprocess_shell(cmd, env=env, **self.kwargs)
@@ -323,7 +331,19 @@ class Subprocess(Transform):
         if status:
             raise RuntimeError(f"{self} failed with status code {status}")
 
-    ENV: dict[str, str] = {}
+    @classmethod
+    def get_global_env(cls) -> dict:
+        """
+        Get the global environment variables used by all :cls:`Subprocess` transforms.
+        """
+        return context.get_current_context().get_properties(cls).get("ENV", {})
+
+    @classmethod
+    def set_global_env(cls, value: dict) -> None:
+        """
+        Set the global environment variables used by all :cls:`Subprocess` transforms.
+        """
+        context.get_current_context().get_properties(cls)["ENV"] = value
 
 
 class Shell(Subprocess):
